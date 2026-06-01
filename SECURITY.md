@@ -1,5 +1,11 @@
 # Security Policy
 
+<p align="center">
+  <img src="https://img.shields.io/badge/version-0.2.0--beta-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/vulnerability-report%20via%20email-critical?style=flat-square" alt="Report">
+</p>
+
 ## Reporting a Vulnerability
 
 Please **DO NOT** open a public issue for security vulnerabilities.
@@ -26,6 +32,9 @@ We will:
 - ✅ **Integrity verification** — AES-GCM authentication tags detect tampering
 - ✅ **Forward secrecy** — KEK rotation re-encrypts all secrets
 - ✅ **Memory cleanup** — `secure_erase` (volatile memset + compiler barrier)
+- ✅ **Anti-swap protection** — `secure_alloc`/`secure_buffer` with `mlock()` prevents KEK from being paged to disk
+- ✅ **Password strength validation** — configurable callback with default minimum length
+- ✅ **Detailed audit log** — `operation_target` and `details` columns provide forensic context for every operation and error
 - ✅ **Atomic operations** — KEK rotation uses single SQLite transaction
 
 ### What Vaultine Does NOT Protect
@@ -50,5 +59,5 @@ We will:
 
 | Version | Release | Supported |
 |---------|---------|-----------|
-| 0.2.x   | TBD     | ✅ Yes    |
+| 0.2.x   | 2026-06 | ✅ Yes    |
 | 0.1.x   | 2026-06 | ❌ No     |

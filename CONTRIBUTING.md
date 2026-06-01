@@ -1,5 +1,12 @@
 # Contributing to Vaultine
 
+<p align="center">
+  <img src="https://img.shields.io/badge/version-0.2.0--beta-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square" alt="PRs Welcome">
+  <img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="Build">
+</p>
+
 ## Code of Conduct
 
 Be respectful, inclusive, and professional.

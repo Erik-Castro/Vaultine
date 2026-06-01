@@ -12,6 +12,8 @@
 
 #include "utils/secure_memory.h"
 
+#include <sqlcipher.h>
+
 namespace ssm::v1 {
 namespace {
 
@@ -570,6 +572,217 @@ TEST_F(SsmApiTest, ConcurrentPasswordChanges) {
     }
     for (auto& t : threads)
         t.join();
+}
+
+// ── Audit log helpers and tests ────────────────────────────────────
+//
+// We use a file-based DB here so we can open a second connection to
+// inspect the audit_log table.
+
+static std::string audit_path() {
+    return "/data/data/com.termux/files/usr/tmp/opencode/ssm_audit_test.db";
+}
+
+static int64_t audit_count(const char* path, const char* operation,
+                            const char* result) {
+    sqlite3* db = nullptr;
+    if (!db_open(path, nullptr, 0, &db))
+        return -1;
+    int64_t cnt = 0;
+    const char* sql =
+        "SELECT count(*) FROM audit_log WHERE operation = ? AND result = ?";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, operation, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, result, -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(stmt) == SQLITE_ROW)
+            cnt = sqlite3_column_int64(stmt, 0);
+        sqlite3_finalize(stmt);
+    }
+    db_close(db);
+    return cnt;
+}
+
+static bool audit_has_details(const char* path, const char* operation,
+                               const char* result, const char* details) {
+    sqlite3* db = nullptr;
+    if (!db_open(path, nullptr, 0, &db))
+        return false;
+    bool found = false;
+    const char* sql =
+        "SELECT count(*) FROM audit_log "
+        "WHERE operation = ? AND result = ? AND details = ?";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, operation, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, result, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, details, -1, SQLITE_TRANSIENT);
+        found = (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_int64(stmt, 0) > 0);
+        sqlite3_finalize(stmt);
+    }
+    db_close(db);
+    return found;
+}
+
+static bool audit_has_target(const char* path, const char* operation,
+                              const char* result, const char* target) {
+    sqlite3* db = nullptr;
+    if (!db_open(path, nullptr, 0, &db))
+        return false;
+    bool found = false;
+    const char* sql =
+        "SELECT count(*) FROM audit_log "
+        "WHERE operation = ? AND result = ? AND operation_target = ?";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, operation, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, result, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, target, -1, SQLITE_TRANSIENT);
+        found = (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_int64(stmt, 0) > 0);
+        sqlite3_finalize(stmt);
+    }
+    db_close(db);
+    return found;
+}
+
+class AuditLogTest : public ::testing::Test {
+protected:
+    ssm_handle* handle_ = nullptr;
+    const char* path_ = nullptr;
+
+    void SetUp() override {
+        path_ = strdup(audit_path().c_str());
+        ::remove(path_);
+        ASSERT_EQ(ssm_init(&handle_, path_, nullptr, 0), SSM_OK);
+        ASSERT_NE(handle_, nullptr);
+    }
+
+    void TearDown() override {
+        if (handle_) {
+            ssm_destroy(handle_);
+            handle_ = nullptr;
+        }
+        ::remove(path_);
+        std::free(const_cast<char*>(path_));
+    }
+};
+
+TEST_F(AuditLogTest, RegisterCreatesAuditRecord) {
+    ASSERT_EQ(ssm_user_register(handle_, "audit_user", "p@ssw0rd"), SSM_OK);
+    EXPECT_EQ(audit_count(path_, "user_register", "SSM_OK"), 1);
+}
+
+TEST_F(AuditLogTest, RegisterDuplicateHasDetails) {
+    ASSERT_EQ(ssm_user_register(handle_, "dup", "p@ssw0rd"), SSM_OK);
+    ASSERT_EQ(ssm_user_register(handle_, "dup", "p@ssw0rd"), SSM_ERR_AUTH);
+    EXPECT_TRUE(audit_has_details(path_, "user_register", "SSM_ERR_AUTH",
+                                   "username already exists"));
+}
+
+TEST_F(AuditLogTest, AuthUnknownUserHasDetails) {
+    int valid = 1;
+    ssm_user_authenticate(handle_, "ghost", "x", &valid);
+    EXPECT_TRUE(audit_has_details(path_, "user_authenticate", "SSM_ERR_AUTH",
+                                   "user not found"));
+}
+
+TEST_F(AuditLogTest, AuthWrongPasswordHasDetails) {
+    ASSERT_EQ(ssm_user_register(handle_, "alice", "correct"), SSM_OK);
+    int valid = 1;
+    ssm_user_authenticate(handle_, "alice", "wrong", &valid);
+    EXPECT_TRUE(audit_has_details(path_, "user_authenticate", "SSM_ERR_AUTH",
+                                   "password mismatch"));
+}
+
+TEST_F(AuditLogTest, SecretStoreHasTargetAndDetails) {
+    ASSERT_EQ(ssm_user_register(handle_, "bob", "p@ss"), SSM_OK);
+    const unsigned char priv[] = "test-key-data-here-32bytes!!";
+    ASSERT_EQ(ssm_secret_store(handle_, "bob", priv, sizeof(priv), nullptr, 0,
+                                "mykey", nullptr), SSM_OK);
+    EXPECT_EQ(audit_count(path_, "secret_store", "SSM_OK"), 1);
+    EXPECT_TRUE(audit_has_target(path_, "secret_store", "SSM_OK", "mykey"));
+}
+
+TEST_F(AuditLogTest, SecretGetHasTargetAndDetails) {
+    ASSERT_EQ(ssm_user_register(handle_, "carol", "p@ss"), SSM_OK);
+    const unsigned char priv[] = "get-test-key-data-here-32byte!";
+    ASSERT_EQ(ssm_secret_store(handle_, "carol", priv, sizeof(priv), nullptr, 0,
+                                "target-key", nullptr), SSM_OK);
+    unsigned char out[64] = {};
+    size_t len = sizeof(out);
+    ASSERT_EQ(ssm_secret_get(handle_, "carol", "target-key", out, &len,
+                              nullptr, nullptr), SSM_OK);
+    EXPECT_TRUE(audit_has_target(path_, "secret_get", "SSM_OK", "target-key"));
+}
+
+TEST_F(AuditLogTest, SecretDeleteHasTargetAndDetails) {
+    ASSERT_EQ(ssm_user_register(handle_, "dave", "p@ss"), SSM_OK);
+    const unsigned char priv[] = "delete-test-key-data-32bytes!";
+    ASSERT_EQ(ssm_secret_store(handle_, "dave", priv, sizeof(priv), nullptr, 0,
+                                "del-key", nullptr), SSM_OK);
+    ASSERT_EQ(ssm_secret_delete(handle_, "dave", "del-key"), SSM_OK);
+    EXPECT_TRUE(audit_has_target(path_, "secret_delete", "SSM_OK", "del-key"));
+}
+
+TEST_F(AuditLogTest, ExpiredKekLogsTargetAndDetails) {
+    ASSERT_EQ(ssm_user_register(handle_, "eve", "p@ss"), SSM_OK);
+    const unsigned char priv[] = "expired-test-data-here-32byte!";
+    ASSERT_EQ(ssm_secret_store(handle_, "eve", priv, sizeof(priv), nullptr, 0,
+                                "exp-key", nullptr), SSM_OK);
+
+    // expire the KEK via second connection
+    ssm_destroy(handle_);
+    handle_ = nullptr;
+    {
+        sqlite3* raw = nullptr;
+        ASSERT_TRUE(db_open(path_, nullptr, 0, &raw));
+        sqlite3_exec(raw,
+            "UPDATE kek_metadata SET expires_at = '2020-01-01T00:00:00Z'",
+            nullptr, nullptr, nullptr);
+        db_close(raw);
+    }
+    ASSERT_EQ(ssm_init(&handle_, path_, nullptr, 0), SSM_OK);
+    unsigned char buf[64] = {};
+    size_t blen = sizeof(buf);
+    ASSERT_EQ(ssm_secret_get(handle_, "eve", "exp-key", buf, &blen,
+                              nullptr, nullptr), SSM_ERR_EXPIRED);
+
+    EXPECT_TRUE(audit_has_target(path_, "secret_get", "SSM_ERR_EXPIRED",
+                                  "exp-key"));
+    EXPECT_TRUE(audit_has_details(path_, "secret_get", "SSM_ERR_EXPIRED",
+                                   "KEK expired"));
+}
+
+TEST_F(AuditLogTest, UserDeleteRecordsResult) {
+    ASSERT_EQ(ssm_user_register(handle_, "frank", "p@ss"), SSM_OK);
+    ASSERT_EQ(ssm_user_delete(handle_, "frank", "p@ss"), SSM_OK);
+    EXPECT_EQ(audit_count(path_, "user_delete", "SSM_OK"), 1);
+}
+
+TEST_F(AuditLogTest, UserDeleteWrongPasswordHasDetails) {
+    ASSERT_EQ(ssm_user_register(handle_, "grace", "correct"), SSM_OK);
+    ASSERT_EQ(ssm_user_delete(handle_, "grace", "wrong"), SSM_ERR_AUTH);
+    EXPECT_TRUE(audit_has_details(path_, "user_delete", "SSM_ERR_AUTH",
+                                   "password mismatch"));
+}
+
+TEST_F(AuditLogTest, KekRotateRecordsSuccess) {
+    ASSERT_EQ(ssm_user_register(handle_, "heidi", "p@ss"), SSM_OK);
+    ASSERT_EQ(ssm_kek_rotate(handle_, "heidi"), SSM_OK);
+    EXPECT_EQ(audit_count(path_, "kek_rotate", "SSM_OK"), 1);
+}
+
+TEST_F(AuditLogTest, ChangePasswordRecordsResult) {
+    ASSERT_EQ(ssm_user_register(handle_, "ivan", "oldpass"), SSM_OK);
+    ASSERT_EQ(ssm_user_change_password(handle_, "ivan", "oldpass", "newpass123"), SSM_OK);
+    EXPECT_EQ(audit_count(path_, "user_change_password", "SSM_OK"), 1);
+}
+
+TEST_F(AuditLogTest, SecretListRecordsResult) {
+    ASSERT_EQ(ssm_user_register(handle_, "judy", "p@ss"), SSM_OK);
+    auto cb = [](const char*, const char*, const char*, size_t, void*) {};
+    ASSERT_EQ(ssm_secret_list(handle_, "judy", cb, nullptr), SSM_OK);
+    EXPECT_EQ(audit_count(path_, "secret_list", "SSM_OK"), 1);
 }
 
 }  // namespace

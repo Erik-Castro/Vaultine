@@ -48,6 +48,7 @@
 | `wrapped_kek` | BLOB | NOT NULL (AES-KW-256) |
 | `salt` | BLOB | NOT NULL |
 | `expires_at` | TEXT | NOT NULL (UTC, default +90d) |
+| `kek_version` | INTEGER | NOT NULL DEFAULT 1 |
 
 ### `audit_log`
 | Coluna | Tipo | Restrição |
@@ -74,7 +75,7 @@
 | `description` | TEXT | NULLABLE |
 | `updated_at` | TEXT | NOT NULL DEFAULT CURRENT_TIMESTAMP |
 
-## API Pública — Novas Features (v0.2)
+## API Pública — Novas Features (v0.2) ✅
 
 ### Validação de Senha
 ```c
@@ -147,7 +148,7 @@ ctest --test-dir build --output-on-failure
 ```bash
 ssm-cli tui
 ```
-Menu principal com submenus para todas as operações (user/secret/kek). Navegação com ↑↓, Enter, Esc. Senhas com ocultação `*`.
+Menu principal com submenus para todas as operações (user/secret/kek/cache-stats). Navegação com ↑↓, Enter, Esc. Senhas com ocultação `*`.
 
 ### Lint / formatação
 ```bash

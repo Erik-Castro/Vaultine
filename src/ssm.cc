@@ -188,7 +188,8 @@ ssm_status ssm_user_register(ssm_handle* h, const char* username, const char* pa
 
     user_row existing;
     if (users_find_by_username(h->db, username, &existing)) {
-        audit_write(h->db, username, 0, "user_register", SSM_ERR_AUTH);
+        audit_write(h->db, username, 0, "user_register", SSM_ERR_AUTH,
+                    nullptr, "username already exists");
         return SSM_ERR_AUTH;
     }
 
@@ -231,18 +232,19 @@ ssm_status ssm_user_authenticate(ssm_handle* h, const char* username, const char
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
         *is_valid = 0;
-        audit_write(h->db, username, 0, "user_authenticate", SSM_ERR_AUTH);
+        audit_write(h->db, username, 0, "user_authenticate", SSM_ERR_AUTH,
+                    nullptr, "user not found");
         return SSM_OK;
     }
 
     size_t pw_len = std::strlen(password);
-    *is_valid = argon2id_verify(reinterpret_cast<const unsigned char*>(password), pw_len,
-                                user.password_hash.data(), user.password_hash.size())
-                    ? 1
-                    : 0;
+    bool pw_ok = argon2id_verify(reinterpret_cast<const unsigned char*>(password), pw_len,
+                                 user.password_hash.data(), user.password_hash.size());
+    *is_valid = pw_ok ? 1 : 0;
 
     audit_write(h->db, username, user.id, "user_authenticate",
-                *is_valid ? SSM_OK : SSM_ERR_AUTH);
+                pw_ok ? SSM_OK : SSM_ERR_AUTH,
+                nullptr, pw_ok ? nullptr : "password mismatch");
     return SSM_OK;
 }
 
@@ -256,7 +258,8 @@ ssm_status ssm_secret_store(ssm_handle* h, const char* username, const unsigned 
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "secret_store", SSM_ERR_AUTH);
+        audit_write(h->db, username, 0, "secret_store", SSM_ERR_AUTH,
+                    nullptr, "user not found");
         return SSM_ERR_AUTH;
     }
 
@@ -265,7 +268,8 @@ ssm_status ssm_secret_store(ssm_handle* h, const char* username, const unsigned 
         return SSM_ERR_INTERNAL;
 
     if (kek_is_expired(kek_meta.expires_at.c_str())) {
-        audit_write(h->db, username, user.id, "secret_store", SSM_ERR_EXPIRED);
+        audit_write(h->db, username, user.id, "secret_store", SSM_ERR_EXPIRED,
+                    name, "KEK expired");
         return SSM_ERR_EXPIRED;
     }
 
@@ -317,7 +321,8 @@ ssm_status ssm_secret_get(ssm_handle* h, const char* username, const char* name,
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "secret_get", SSM_ERR_AUTH);
+        audit_write(h->db, username, 0, "secret_get", SSM_ERR_AUTH,
+                    nullptr, "user not found");
         return SSM_ERR_AUTH;
     }
 
@@ -326,7 +331,8 @@ ssm_status ssm_secret_get(ssm_handle* h, const char* username, const char* name,
         return SSM_ERR_INTERNAL;
 
     if (kek_is_expired(kek_meta.expires_at.c_str())) {
-        audit_write(h->db, username, user.id, "secret_get", SSM_ERR_EXPIRED);
+        audit_write(h->db, username, user.id, "secret_get", SSM_ERR_EXPIRED,
+                    name, "KEK expired");
         return SSM_ERR_EXPIRED;
     }
 
@@ -363,7 +369,8 @@ ssm_status ssm_secret_get(ssm_handle* h, const char* username, const char* name,
     secure_erase(kek_raw, sizeof(kek_raw));
 
     if (!dec_ok) {
-        audit_write(h->db, username, user.id, "secret_get", SSM_ERR_INTEGRITY);
+        audit_write(h->db, username, user.id, "secret_get", SSM_ERR_INTEGRITY,
+                    name, "GCM integrity check failed");
         return SSM_ERR_INTEGRITY;
     }
 
@@ -396,7 +403,8 @@ ssm_status ssm_secret_delete(ssm_handle* h, const char* username, const char* na
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "secret_delete", SSM_ERR_AUTH);
+        audit_write(h->db, username, 0, "secret_delete", SSM_ERR_AUTH,
+                    nullptr, "user not found");
         return SSM_ERR_AUTH;
     }
 
@@ -405,7 +413,8 @@ ssm_status ssm_secret_delete(ssm_handle* h, const char* username, const char* na
         return SSM_ERR_INTERNAL;
 
     if (kek_is_expired(kek_meta.expires_at.c_str())) {
-        audit_write(h->db, username, user.id, "secret_delete", SSM_ERR_EXPIRED);
+        audit_write(h->db, username, user.id, "secret_delete", SSM_ERR_EXPIRED,
+                    name, "KEK expired");
         return SSM_ERR_EXPIRED;
     }
 
@@ -425,7 +434,8 @@ ssm_status ssm_secret_list(ssm_handle* h, const char* username,
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "secret_list", SSM_ERR_AUTH);
+        audit_write(h->db, username, 0, "secret_list", SSM_ERR_AUTH,
+                    nullptr, "user not found");
         return SSM_ERR_AUTH;
     }
 
@@ -434,7 +444,8 @@ ssm_status ssm_secret_list(ssm_handle* h, const char* username,
         return SSM_ERR_INTERNAL;
 
     if (kek_is_expired(kek_meta.expires_at.c_str())) {
-        audit_write(h->db, username, user.id, "secret_list", SSM_ERR_EXPIRED);
+        audit_write(h->db, username, user.id, "secret_list", SSM_ERR_EXPIRED,
+                    nullptr, "KEK expired");
         return SSM_ERR_EXPIRED;
     }
 
@@ -459,14 +470,16 @@ ssm_status ssm_user_delete(ssm_handle* h, const char* username, const char* pass
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "user_delete", SSM_ERR_AUTH);
+        audit_write(h->db, username, 0, "user_delete", SSM_ERR_AUTH,
+                    nullptr, "user not found");
         return SSM_ERR_AUTH;
     }
 
     size_t pw_len = std::strlen(password);
     if (!argon2id_verify(reinterpret_cast<const unsigned char*>(password), pw_len,
                          user.password_hash.data(), user.password_hash.size())) {
-        audit_write(h->db, username, user.id, "user_delete", SSM_ERR_AUTH);
+        audit_write(h->db, username, user.id, "user_delete", SSM_ERR_AUTH,
+                    nullptr, "password mismatch");
         return SSM_ERR_AUTH;
     }
 
@@ -490,14 +503,16 @@ ssm_status ssm_user_change_password(ssm_handle* h, const char* username,
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "user_change_password", SSM_ERR_AUTH);
+        audit_write(h->db, username, 0, "user_change_password", SSM_ERR_AUTH,
+                    nullptr, "user not found");
         return SSM_ERR_AUTH;
     }
 
     size_t old_len = std::strlen(old_password);
     if (!argon2id_verify(reinterpret_cast<const unsigned char*>(old_password), old_len,
                          user.password_hash.data(), user.password_hash.size())) {
-        audit_write(h->db, username, user.id, "user_change_password", SSM_ERR_AUTH);
+        audit_write(h->db, username, user.id, "user_change_password", SSM_ERR_AUTH,
+                    nullptr, "password mismatch");
         return SSM_ERR_AUTH;
     }
 
@@ -602,12 +617,14 @@ ssm_status ssm_kek_rotate(ssm_handle* h, const char* username) {
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "kek_rotate", SSM_ERR_AUTH);
+        audit_write(h->db, username, 0, "kek_rotate", SSM_ERR_AUTH,
+                    nullptr, "user not found");
         return SSM_ERR_AUTH;
     }
 
     if (!kek_rotate(h->db, user.id, user.password_hash.data(), user.password_hash.size())) {
-        audit_write(h->db, username, user.id, "kek_rotate", SSM_ERR_INTERNAL);
+        audit_write(h->db, username, user.id, "kek_rotate", SSM_ERR_INTERNAL,
+                    nullptr, "KEK rotation failed");
         return SSM_ERR_INTERNAL;
     }
 

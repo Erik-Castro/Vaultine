@@ -40,6 +40,7 @@ enum Screen {
     SCREEN_SECRET_LIST,
     SCREEN_KEK_ROTATE,
     SCREEN_DB_INFO,
+    SCREEN_CACHE_STATS,
     SCREEN_EXIT,
 };
 
@@ -83,6 +84,7 @@ static Screen screen_secret_delete();
 static Screen screen_secret_list();
 static Screen screen_kek_rotate();
 static Screen screen_db_info();
+static Screen screen_cache_stats();
 
 // ============================================================
 // Utility functions
@@ -273,13 +275,14 @@ static void list_callback(const char* name, const char* desc, const char* update
 // ============================================================
 static Screen screen_main() {
     int sel = menu_select({"User Management", "Secret Management", "KEK Rotation",
-                           "Database Info", "Exit"},
+                           "Database Info", "Cache Statistics", "Exit"},
                           "MAIN MENU");
     switch (sel) {
         case 0: return SCREEN_USER_MENU;
         case 1: return SCREEN_SECRET_MENU;
         case 2: return SCREEN_KEK_ROTATE;
         case 3: return SCREEN_DB_INFO;
+        case 4: return SCREEN_CACHE_STATS;
         default: return SCREEN_EXIT;
     }
 }
@@ -907,6 +910,53 @@ static Screen screen_db_info() {
 }
 
 // ============================================================
+// Screen: Cache Statistics
+// ============================================================
+static Screen screen_cache_stats() {
+    clear_content();
+    draw_title_bar();
+
+    ssm_handle* h = nullptr;
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
+                              g_db_key_len);
+    if (st != SSM_OK) {
+        show_notice(ssm_status_to_string(st), true);
+        return SCREEN_MAIN;
+    }
+
+    ssm_cache_stats stats{};
+    st = ssm_cache_get_stats(h, &stats);
+    ssm_destroy(h);
+
+    int y = 3;
+    attron(A_BOLD | COLOR_PAIR(CP_LABEL));
+    mvprintw(y++, (COLS - 20) / 2, "CACHE STATISTICS");
+    attroff(A_BOLD | COLOR_PAIR(CP_LABEL));
+    ++y;
+
+    if (st != SSM_OK) {
+        attron(COLOR_PAIR(CP_ERROR));
+        mvprintw(y, 4, "Error: %s", ssm_status_to_string(st));
+        attroff(COLOR_PAIR(CP_ERROR));
+    } else {
+        double hit_rate = (stats.hit_count + stats.miss_count) > 0
+            ? (100.0 * stats.hit_count) / (stats.hit_count + stats.miss_count)
+            : 0.0;
+        mvprintw(y++, 4, "Total slots:   %zu / 256", stats.total_entries);
+        mvprintw(y++, 4, "Valid entries: %zu", stats.valid_entries);
+        mvprintw(y++, 4, "Hits:          %zu", stats.hit_count);
+        mvprintw(y++, 4, "Misses:        %zu", stats.miss_count);
+        attron(COLOR_PAIR(hit_rate > 50 ? CP_SUCCESS : CP_ERROR));
+        mvprintw(y++, 4, "Hit rate:      %.1f%%", hit_rate);
+        attroff(COLOR_PAIR(hit_rate > 50 ? CP_SUCCESS : CP_ERROR));
+    }
+
+    mvprintw(y + 2, 4, "Press any key to return");
+    wait_for_key();
+    return SCREEN_MAIN;
+}
+
+// ============================================================
 // Public entry point
 // ============================================================
 int handle_tui(int /*argc*/, char** /*argv*/) {
@@ -934,6 +984,7 @@ int handle_tui(int /*argc*/, char** /*argv*/) {
             case SCREEN_SECRET_LIST:   current = screen_secret_list();    break;
             case SCREEN_KEK_ROTATE:    current = screen_kek_rotate();     break;
             case SCREEN_DB_INFO:       current = screen_db_info();        break;
+            case SCREEN_CACHE_STATS:   current = screen_cache_stats();    break;
             default:                   current = SCREEN_EXIT;             break;
         }
     }

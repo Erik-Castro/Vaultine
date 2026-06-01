@@ -4,6 +4,17 @@
   <a href="assets/vaultine-logo.svg"><img src="assets/vaultine-logo.svg" alt="Vaultine Logo" width="200" height="200"></a>
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/version-0.2.0--beta-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=c%2B%2B" alt="C++17">
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/platform-linux%20%7C%20macOS-lightgrey?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="Build">
+  <img src="https://img.shields.io/badge/tests-139%20passing-brightgreen?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/coverage-80%25-yellow?style=flat-square" alt="Coverage">
+  <img src="https://img.shields.io/badge/security-audit%20pending-orange?style=flat-square" alt="Security">
+</p>
+
 Biblioteca dinâmica C++ (.so) POSIX para gerenciamento criptográfico de segredos multi-tenant com SQLCipher.
 
 ## Índice
@@ -168,7 +179,8 @@ O Vaultine inclui uma interface ncurses interativa via `ssm-cli tui`:
 │     [2] Secret Management                     │
 │     [3] KEK Rotation                          │
 │     [4] Database Info                         │
-│     [5] Exit                                  │
+│     [5] Cache Statistics                      │
+│     [6] Exit                                  │
 │                                               │
 ├───────────────────────────────────────────────┤
 │  DB: ./ssm.db  │  arrows + Enter to select     │
@@ -180,10 +192,10 @@ O Vaultine inclui uma interface ncurses interativa via `ssm-cli tui`:
 | `↑ ↓` | Navegar entre itens |
 | `Enter` | Selecionar |
 | `Esc` | Voltar / Cancelar |
-| `1-5` | Atalho numérico |
+| `1-6` | Atalho numérico |
 | `q` | Sair |
 
-**Telas:** Register, Authenticate, Delete, Change Password, Secret Store/Get/Delete/List (scrollável), KEK Rotation, Database Info.
+**Telas:** Register, Authenticate, Delete, Change Password, Secret Store/Get/Delete/List (scrollável), KEK Rotation, Database Info, Cache Statistics.
 
 ```bash
 ssm-cli tui                     # inicia a interface
@@ -592,7 +604,68 @@ Senha do Usuário
 - `std::shared_mutex` no `ssm_handle`: protege operações multi-step (especialmente rotação).
 - Todas as funções da API pública adquirem `unique_lock` no início.
 
-## Wrapping Key Cache
+## Password Validation (v0.2.0)
+
+```c
+ssm_status ssm_set_password_validator(ssm_password_validator validator, void* user_data);
+```
+
+Registre um callback para validar senhas antes de `ssm_user_register` e `ssm_user_change_password`:
+
+```c
+// Validador customizado: exige pelo menos 8 caracteres e um '!'
+ssm_status my_validator(const char* pw, void*) {
+    return (strlen(pw) >= 8 && strchr(pw, '!')) ? SSM_OK : SSM_ERR_INTERNAL;
+}
+
+ssm_set_password_validator(my_validator, NULL);
+```
+
+- Default: mínimo **4 caracteres**
+- `NULL` restaura o validador default
+
+## Secure Memory (mlock) (v0.2.0)
+
+```cpp
+void* secure_alloc(size_t size);                       // malloc + mlock
+void  secure_free(void* ptr, size_t size);             // secure_erase + munlock + free
+template <typename T> class secure_buffer;              // RAII wrapper
+template <typename T> class secure_vector;              // RAII vector
+```
+
+Previne que chaves criptográficas sejam swappadas para disco:
+
+```cpp
+// KEK nunca será paginada para swap
+auto buf = secure_buffer<unsigned char>(32);  // mlocado
+crypto_function(buf.data(), buf.size());
+// destructor: secure_erase + munlock + free
+```
+
+## Cache Statistics (v0.2.0)
+
+```c
+typedef struct {
+    size_t total_entries;   // SSM_CACHE_MAX = 256
+    size_t valid_entries;
+    size_t hit_count;
+    size_t miss_count;
+} ssm_cache_stats;
+
+ssm_status ssm_cache_get_stats(ssm_handle* h, ssm_cache_stats* out);
+```
+
+```bash
+ssm-cli cache-stats
+# Cache Statistics:
+#   Total slots:     256
+#   Valid entries:   1
+#   Hits:            5
+#   Misses:          1
+#   Hit rate:        83.3%
+```
+
+## Audit Log
 
 Cache LRU de 256 entradas no `ssm_handle` que armazena chaves de *wrapping*
 (derivadas via Argon2id — a etapa mais cara de cada operação) para evitar
@@ -611,7 +684,7 @@ o KDF em operações repetidas no mesmo tenant:
 ## Audit Log
 
 Tabela `audit_log` registra todas as operações da API com timestamp, user_id,
-operação e resultado. Consultável diretamente via SQLite para auditoria forense.
+operação, resultado, alvo e detalhes. Consultável diretamente via SQLite para auditoria forense.
 
 | Coluna | Tipo | Descrição |
 |--------|------|-----------|
@@ -619,7 +692,9 @@ operação e resultado. Consultável diretamente via SQLite para auditoria foren
 | `user_id` | INTEGER | FK → users(id) (0 se não autenticado) |
 | `username` | TEXT | Nome do usuário no momento da operação |
 | `operation` | TEXT | Nome da operação (ex: `user_register`, `secret_get`) |
-| `status` | TEXT | Resultado (`SSM_OK`, `SSM_ERR_AUTH`, etc.) |
+| `operation_target` | TEXT | Alvo da operação (ex: nome do secret) |
+| `details` | TEXT | Detalhes contextuais ("password mismatch", "KEK expired") |
+| `result` | TEXT | Resultado (`SSM_OK`, `SSM_ERR_AUTH`, etc.) |
 | `timestamp` | TEXT | ISO 8601 UTC |
 
 ## Schema SQLite

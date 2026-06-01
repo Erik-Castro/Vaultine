@@ -105,8 +105,9 @@ static void print_usage() {
         "  secret delete <username> <name>\n"
         "  secret list <username>\n"
         "  kek rotate <username>\n"
-        "  tui              Interactive terminal interface\n"
-        "  env exec <username> [--] <command> [args...]\n"
+         "  cache-stats      Show cache statistics\n"
+         "  tui              Interactive terminal interface\n"
+         "  env exec <username> [--] <command> [args...]\n"
         "  help [command]\n",
         g_prog);
 }
@@ -473,6 +474,39 @@ static int handle_kek_rotate(int argc, char** argv) {
 }
 
 // -------------------------------------------------------------------
+// cache-stats handler
+// -------------------------------------------------------------------
+static int handle_cache_stats(int /*argc*/, char** /*argv*/) {
+    ssm_handle* h = nullptr;
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
+                              g_db_key_len);
+    if (st != SSM_OK) die_status(st, "ssm_init");
+
+    ssm_cache_stats stats{};
+    st = ssm_cache_get_stats(h, &stats);
+    ssm_destroy(h);
+    if (st != SSM_OK) die_status(st, "cache stats");
+
+    if (g_json) {
+        printf("{\"total_entries\":%zu,\"valid_entries\":%zu,"
+               "\"hit_count\":%zu,\"miss_count\":%zu}\n",
+               stats.total_entries, stats.valid_entries,
+               stats.hit_count, stats.miss_count);
+    } else {
+        double hit_rate = (stats.hit_count + stats.miss_count) > 0
+            ? (100.0 * stats.hit_count) / (stats.hit_count + stats.miss_count)
+            : 0.0;
+        printf("Cache Statistics:\n");
+        printf("  Total slots:     %zu\n", stats.total_entries);
+        printf("  Valid entries:   %zu\n", stats.valid_entries);
+        printf("  Hits:            %zu\n", stats.hit_count);
+        printf("  Misses:          %zu\n", stats.miss_count);
+        printf("  Hit rate:        %.1f%%\n", hit_rate);
+    }
+    return 0;
+}
+
+// -------------------------------------------------------------------
 // env handlers
 // -------------------------------------------------------------------
 static void print_help_env() {
@@ -728,6 +762,8 @@ int main(int argc, char** argv) {
         return dispatch(env_cmds, remaining, cmd_argv);
     if (std::strcmp(cmd, "tui") == 0)
         return handle_tui(remaining, cmd_argv);
+    if (std::strcmp(cmd, "cache-stats") == 0)
+        return handle_cache_stats(remaining, cmd_argv);
 
     fprintf(stderr, "%s: unknown command '%s'. Try --help\n", g_prog, cmd);
     return 1;
