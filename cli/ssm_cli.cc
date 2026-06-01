@@ -15,9 +15,9 @@
 // Globals
 // -------------------------------------------------------------------
 static const char* g_prog = "ssm-cli";
-static const char* g_db_path = "./ssm.db";
-static unsigned char g_db_key[32];
-static size_t g_db_key_len = 0;
+const char* g_db_path = "./ssm.db";
+unsigned char g_db_key[32];
+size_t g_db_key_len = 0;
 static bool g_json = false;
 static std::string g_password;
 
@@ -105,6 +105,7 @@ static void print_usage() {
         "  secret delete <username> <name>\n"
         "  secret list <username>\n"
         "  kek rotate <username>\n"
+        "  tui              Interactive terminal interface\n"
         "  env exec <username> [--] <command> [args...]\n"
         "  help [command]\n",
         g_prog);
@@ -659,6 +660,11 @@ static int dispatch(const cmd_map* cmds, int argc, char** argv) {
 }
 
 // -------------------------------------------------------------------
+// TUI handler (forward decl from ssm_tui.cc)
+// -------------------------------------------------------------------
+int handle_tui(int argc, char** argv);
+
+// -------------------------------------------------------------------
 // main
 // -------------------------------------------------------------------
 int main(int argc, char** argv) {
@@ -720,6 +726,8 @@ int main(int argc, char** argv) {
         return dispatch(kek_cmds, remaining, cmd_argv);
     if (std::strcmp(cmd, "env") == 0)
         return dispatch(env_cmds, remaining, cmd_argv);
+    if (std::strcmp(cmd, "tui") == 0)
+        return handle_tui(remaining, cmd_argv);
 
     fprintf(stderr, "%s: unknown command '%s'. Try --help\n", g_prog, cmd);
     return 1;

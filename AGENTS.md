@@ -67,7 +67,11 @@
 ### Dependências (sistema)
 ```bash
 # Debian/Ubuntu
-apt install libsqlcipher-dev libsodium-dev libssl-dev cmake pkg-config
+apt install libsqlcipher-dev libsodium-dev libssl-dev libncursesw5-dev \
+            cmake pkg-config
+
+# Termux
+pkg install libsodium openssl sqlite ncursesw cmake ninja
 
 # ou via Vcpkg (alternativa):
 cmake -B build -DCMAKE_TOOLCHAIN_FILE=/path/to/vcpkg.cmake
@@ -85,6 +89,12 @@ ctest --test-dir build --output-on-failure
 # ou direto:
 ./build/tests/ssm_test
 ```
+
+### TUI (ncurses)
+```bash
+ssm-cli tui
+```
+Menu principal com submenus para todas as operações (user/secret/kek). Navegação com ↑↓, Enter, Esc. Senhas com ocultação `*`.
 
 ### Visibility
 - API pública: marcada com `SSM_EXPORT` em `include/ssm/ssm.h`

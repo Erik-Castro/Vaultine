@@ -64,6 +64,7 @@ KEK expira (90d) → rotação: decrypt tudo com KEK velho → encrypt com KEK n
 | **OpenSSL** | AES-KW-256, AES-GCM-256 |
 | **libsodium** | Argon2id (hashing + KDF), random_bytes |
 | **SQLite3 / SQLCipher** | Persistência (SQLCipher: encrypt at rest; SQLite3 puro: dev) |
+| **ncursesw** | TUI (Terminal User Interface) |
 | **CMake** | Build system |
 | **Google Test** | Testes unitários e integração |
 
@@ -73,10 +74,11 @@ KEK expira (90d) → rotação: decrypt tudo com KEK velho → encrypt com KEK n
 
 ```bash
 # Debian / Ubuntu (produção — SQLCipher real)
-apt install libsqlcipher-dev libsodium-dev libssl-dev cmake pkg-config build-essential
+apt install libsqlcipher-dev libsodium-dev libssl-dev libncursesw5-dev \
+            cmake pkg-config build-essential
 
 # Termux (dev — SQLite3 puro, sem encrypt-at-rest)
-pkg install libsodium openssl sqlite cmake ninja
+pkg install libsodium openssl sqlite ncursesw cmake ninja
 ```
 
 ### Compilar e Testar
@@ -111,6 +113,31 @@ Consumir via CMake:
 find_package(ssm REQUIRED)
 target_link_libraries(meu_app PRIVATE ssm::ssm)
 ```
+
+## Licença MIT
+
+```text
+MIT License
+
+Copyright (c) 2026 Vaultine
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 ### Lint / Formatação
@@ -122,6 +149,45 @@ find src/ include/ tests/ -name '*.cc' -o -name '*.h' | xargs clang-format -i
 # clang-tidy (requer compile_commands.json)
 cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 run-clang-tidy -p build src/
+```
+
+## TUI (Terminal User Interface)
+
+O Vaultine inclui uma interface ncurses interativa via `ssm-cli tui`:
+
+```
+┌───────────────────────────────────────────────┐
+│  VAULTINE  —  Terminal Interface              │
+├───────────────────────────────────────────────┤
+│                                               │
+│         ╔═══════════════════╗                  │
+│         ║   MENU PRINCIPAL  ║                  │
+│         ╚═══════════════════╝                  │
+│                                               │
+│     [1] User Management                       │
+│     [2] Secret Management                     │
+│     [3] KEK Rotation                          │
+│     [4] Database Info                         │
+│     [5] Exit                                  │
+│                                               │
+├───────────────────────────────────────────────┤
+│  DB: ./ssm.db  │  arrows + Enter to select     │
+└───────────────────────────────────────────────┘
+```
+
+| Tecla | Ação |
+|-------|------|
+| `↑ ↓` | Navegar entre itens |
+| `Enter` | Selecionar |
+| `Esc` | Voltar / Cancelar |
+| `1-5` | Atalho numérico |
+| `q` | Sair |
+
+**Telas:** Register, Authenticate, Delete, Change Password, Secret Store/Get/Delete/List (scrollável), KEK Rotation, Database Info.
+
+```bash
+ssm-cli tui                     # inicia a interface
+ssm-cli --db /path/db tui       # com banco personalizado
 ```
 
 ## API Pública
