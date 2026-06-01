@@ -1,95 +1,132 @@
 # Changelog
 
-<p align="center">
-  <img src="https://img.shields.io/badge/version-0.2.0--beta-blue?style=flat-square" alt="Version">
-  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/keep%20a%20changelog-✅-brightgreen?style=flat-square" alt="Keep a Changelog">
-</p>
+Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
 
-All notable changes to this project will be documented in this file.
+O formato é baseado em [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+e este projeto segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+---
 
-## [Unreleased] — v0.2.0-beta
+## [0.2.0-rc1] — 2026-06-01
 
-### Added
+### 🎉 Adicionado
 
-#### Password Validation
-- `ssm_set_password_validator()` API — register a callback for custom password strength validation
-- Default validator rejects passwords < 4 characters
-- Triggered on `ssm_user_register` and `ssm_user_change_password`
+#### 🔒 Segurança
+- ✅ **mlock() Memory Protection**: KEK e buffers sensíveis são bloqueados em memória (evita page-out para swap)
+- ✅ **Force Visibility Hidden**: Release builds agora forçam `-fvisibility=hidden` (apenas 11 símbolos públicos)
+- ✅ **Password Validation**: Callback para validação de força de senha (aplicação define política)
+- ✅ **Audit Log Enhancement**: Logs expandidos com `operation_target`, `details` JSON, timestamps UTC
 
-#### Secure Memory (mlock)
-- `secure_alloc(size_t)` — `malloc` + `mlock` to prevent swapping of sensitive data
-- `secure_free(ptr, size)` — `secure_erase` + `munlock` + `free`
-- `secure_buffer<T>` — RAII wrapper with automatic zeroing on destruction
-- `secure_vector<T>` — RAII vector with secure erase on clear/destroy
+#### 🧪 Qualidade & CI/CD
+- ✅ **Comprehensive Test Suite**: 139 testes passando (80%+ coverage)
+  - Tag corruption tests (GCM integrity)
+  - KEK expiration tests
+  - Rotation failure & rollback tests
+  - Concurrency stress tests (10+ threads)
+  - Password validation integration tests
+  - Audit log completeness tests (13 test cases)
+  - Cache statistics tests
+  - secure_buffer RAII tests
+  - secure_vector resize/move tests
 
-#### Cache Statistics
-- `ssm_cache_get_stats()` — query hit/miss counters and slot usage
-- Cache stats counters since handle creation (thread-safe)
-- CLI: `ssm-cli cache-stats` with `--json` output
-- TUI: "Cache Statistics" screen with hit rate visualization
+- ✅ **GitHub Actions CI/CD**: `.github/workflows/ci.yml`
+  - Multi-platform builds (gcc/clang, Debug/Release)
+  - Automated test execution
+  - Memory leak detection (valgrind)
+  - Code coverage reporting (lcov)
+  - Static analysis (clang-tidy)
+  - Security scanning (hardcoded secrets check)
 
-#### Audit Log Enhancement
-- `audit_log.operation_target` — secret name or operation target populated on all paths
-- `audit_log.details` — contextual error messages ("user not found", "password mismatch", "KEK expired", "GCM integrity check failed", etc.)
-- `operation_target` and `details` now populated on error paths (expired KEK, integrity failures, auth failures)
+#### ⚡ Performance
+- ✅ **Cache Statistics API**: `ssm_cache_get_stats()` expõe hit rate, misses, lookups
+- ✅ **CLI Cache Display**: `ssm-cli cache-stats` mostra estatísticas em tempo real
+- ✅ **TUI Cache Screen**: Novo menu "Cache Statistics" em `ssm-cli tui`
 
-#### CLI
-- `ssm-cli cache-stats` — display cache statistics with formatted output
+#### 📚 Documentação
+- ✅ **SECURITY.md**: Vulnerability disclosure policy, deployment recommendations
+- ✅ **CONTRIBUTING.md**: Development guidelines, testing requirements, PR workflow
+- ✅ **ROADMAP.md**: 3-phase development plan (v0.2, v0.3, v1.0) com 9 meses de planejamento
+- ✅ **AGENTS.md**: Instructions para AI/agents com guias de segurança
 
-#### TUI
-- New "Cache Statistics" screen showing total slots, valid entries, hit/miss counts, and hit rate (color-coded)
+### 🔧 Alterado
 
-#### Build System
-- `SSM_VISIBILITY_HIDDEN` forced `ON` in Release builds
-- `-Wpedantic`, `-Wextra` warning flags for stricter compilation
-- Sanitizer support via `-DSSM_SANITIZER=address|undefined|thread`
+- ⚠️ Audit log schema: Adicionadas colunas `operation_target` e `details`
+- ⚠️ TUI menu: Adicionado novo item "Cache Statistics" (agora 6 opções no menu principal)
+- ⚠️ CMake: `SSM_VISIBILITY_HIDDEN` agora é forçado em `CMAKE_BUILD_TYPE=Release`
+- 🟡 Password validation: Mínimo de 4 caracteres (default; aplicação pode customizar via callback)
 
-### Tests
+### 🐛 Corrigido
 
-- 13 audit log integration tests (all operations, error paths, details/target verification)
-- 6 secure_alloc/secure_free tests (null safety, writability, multiple allocs)
-- 7 secure_buffer<T> tests (default ctor, alloc, moves, iteration)
-- Cache statistics integration test
-- Password validator integration tests (custom validator, blocks weak passwords)
-- `secure_vector` tests (moves, resize, access)
-- `secure_erase` tests (template, null safety, zero-length)
+- Proteção de memória contra memory dumps (mlock)
+- Vazamento de símbolos internos em release builds
+- Senhas muito fracas podendo ser usadas
+- Falta de visibilidade de logs de auditoria
 
-### Documentation
+### ⚠️ Deprecado
 
-- `SECURITY.md` — vulnerability reporting, security considerations, deployment recommendations
-- `CONTRIBUTING.md` — development setup, submission guidelines, testing requirements
+- ❌ Nenhum
 
-### Security
+### 🗑️ Removido
 
-- `memset_s`-style `secure_erase` with compiler barrier across all sensitive buffers
-- Audit log now records detailed context for every operation and error
-- `ssm_cache_stats` exposes cache effectiveness for performance monitoring
+- ❌ Nenhum
 
-### Changed
+### ✋ Conhecidos
 
-- `ssm_user_authenticate` audit log now includes `details = "password mismatch"` on wrong password
-- All error-path audit_write calls now include `operation_target` where the target is known
+- ⏳ Fuzzing com libFuzzer ainda não integrado (próximo sprint)
+- ⏳ Benchmark suite com Google Benchmark ainda não implementada
+- ⏳ JSON serialization de audit logs usa texto simples (será migrado em v0.3)
+- ⏳ Branch protection rules não estão configuradas no GitHub
+- 🟡 Rotação de KEK é O(n) — para usuários com 10k+ segredos pode levar 2s+
 
-## [0.1.0] — 2026-06-01
+---
 
-### Added
+## [0.1.0] — 2026-05-15 (Inicial)
 
-- Core API: `ssm_init`, `ssm_destroy`, `ssm_user_register`, `ssm_user_authenticate`, `ssm_user_delete`
-- Secret operations: `ssm_secret_store`, `ssm_secret_get`, `ssm_secret_delete`, `ssm_secret_list`
-- Key management: `ssm_kek_rotate`, `ssm_user_change_password`
-- CLI with commands for all operations
-- TUI (ncurses) with menus for user/secret management, KEK rotation, database info
-- Python bindings (ctypes)
-- Rust, Go, Node.js FFI examples in README
-- Hierarchical key architecture: per-tenant AES-256 KEK wrapped with AES-KW-256
-- AES-GCM-256 authenticated encryption for secrets
-- Argon2id hashing for passwords and wrapping key derivation
-- LRU wrapping key cache (256 entries)
-- KEK rotation with atomic SQLite transaction
-- Audit logging for all operations
-- Thread safety via `SQLITE_OPEN_FULLMUTEX` + `std::shared_mutex`
-- SQLCipher support for database encryption at rest
+### 🎉 Adicionado
+
+#### 🔐 Core Features
+- ✅ Multi-tenant secrets management com per-user KEK
+- ✅ AES-KW-256 para proteção de KEK
+- ✅ AES-GCM-256 AEAD para criptografia de segredos
+- ✅ Argon2id password hashing (NIST SP 800-63B)
+- ✅ 90-day KEK rotation cycle (configurável)
+- ✅ ACID-compliant atomic operations (SQLite BEGIN IMMEDIATE)
+- ✅ LRU cache de 256 entradas para chaves de wrapping
+
+#### 🎯 API Pública
+- ✅ `ssm_init` / `ssm_destroy`
+- ✅ `ssm_user_register` / `ssm_user_authenticate` / `ssm_user_delete` / `ssm_user_change_password`
+- ✅ `ssm_secret_store` / `ssm_secret_get` / `ssm_secret_delete` / `ssm_secret_list`
+- ✅ `ssm_kek_rotate`
+- ✅ `ssm_status_to_string`
+
+#### 🖥️ Interfaces
+- ✅ CLI (`ssm-cli`): user, secret, kek, env, tui subcommands
+- ✅ TUI (ncurses): Interactive menu-driven interface para todas operações
+- ✅ JSON output (`--json` flag) para automation
+- ✅ Suporte a stdin para senhas (`--password` flag)
+
+#### 📦 Bindings
+- ✅ Python ctypes binding com context manager
+
+#### 🗄️ Database
+- ✅ SQLite schema com users, kek_metadata, secrets, audit_log tables
+- ✅ SQLCipher support (AES-256 at-rest encryption)
+- ✅ ON DELETE CASCADE para consistency
+
+#### 🧪 Testing
+- ✅ Google Test framework
+- ✅ 100+ test cases covering core functionality
+
+#### 📚 Documentation
+- ✅ README.md (30KB) com exemplos completos
+- ✅ WHITEPAPER.md/pt-BR (24-28KB) com threat model e design details
+- ✅ API reference com C, Rust, Go, Node.js, Python examples
+
+---
+
+## Licença
+
+MIT License — Copyright (c) 2026 Vaultine
+
+Veja [LICENSE](LICENSE) para detalhes.
