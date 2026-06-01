@@ -42,3 +42,11 @@ set_target_properties(ssm PROPERTIES
     SOVERSION ${PROJECT_VERSION_MAJOR}
     OUTPUT_NAME ssm
 )
+
+option(SSM_VISIBILITY_HIDDEN "Hide internal symbols; only SSM_EXPORT public API visible" OFF)
+if(SSM_VISIBILITY_HIDDEN)
+    set_target_properties(ssm PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+    )
+endif()

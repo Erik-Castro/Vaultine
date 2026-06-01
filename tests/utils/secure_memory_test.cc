@@ -1,14 +1,13 @@
+#include "utils/secure_memory.h"
+
 #include <gtest/gtest.h>
 
 #include <cstring>
 
-#include "utils/secure_memory.h"
-
 namespace ssm::v1 {
 namespace {
 
-TEST(SecureMemoryTest, EraseZeroesBuffer)
-{
+TEST(SecureMemoryTest, EraseZeroesBuffer) {
     unsigned char buf[32];
     std::memset(buf, 0xFF, sizeof(buf));
     secure_erase(buf, sizeof(buf));
@@ -16,22 +15,16 @@ TEST(SecureMemoryTest, EraseZeroesBuffer)
         EXPECT_EQ(b, 0);
 }
 
-TEST(SecureMemoryTest, EraseNullIsSafe)
-{
-    secure_erase(nullptr, 0);
-}
+TEST(SecureMemoryTest, EraseNullIsSafe) { secure_erase(nullptr, 0); }
 
-TEST(SecureMemoryTest, EraseZeroLengthIsSafe)
-{
+TEST(SecureMemoryTest, EraseZeroLengthIsSafe) {
     int x = 42;
     secure_erase(&x, 0);
     EXPECT_EQ(x, 42);
 }
 
-TEST(SecureMemoryTest, EraseTemplateTrivialType)
-{
-    struct alignas(16) pod
-    {
+TEST(SecureMemoryTest, EraseTemplateTrivialType) {
+    struct alignas(16) pod {
         int a;
         double b;
     };
@@ -41,16 +34,14 @@ TEST(SecureMemoryTest, EraseTemplateTrivialType)
     EXPECT_EQ(p.b, 0.0);
 }
 
-TEST(SecureVectorTest, DefaultEmpty)
-{
+TEST(SecureVectorTest, DefaultEmpty) {
     secure_vector<int> v;
     EXPECT_TRUE(v.empty());
     EXPECT_EQ(v.size(), 0);
     EXPECT_EQ(v.data(), nullptr);
 }
 
-TEST(SecureVectorTest, AllocAndAccess)
-{
+TEST(SecureVectorTest, AllocAndAccess) {
     secure_vector<int> v(16);
     EXPECT_FALSE(v.empty());
     EXPECT_EQ(v.size(), 16);
@@ -60,8 +51,7 @@ TEST(SecureVectorTest, AllocAndAccess)
     EXPECT_EQ(v[15], -1);
 }
 
-TEST(SecureVectorTest, MoveClearsSource)
-{
+TEST(SecureVectorTest, MoveClearsSource) {
     secure_vector<int> v(8);
     v[3] = 99;
     auto v2 = std::move(v);
@@ -72,8 +62,7 @@ TEST(SecureVectorTest, MoveClearsSource)
     EXPECT_EQ(v2[3], 99);
 }
 
-TEST(SecureVectorTest, MoveAssignmentReleasesTarget)
-{
+TEST(SecureVectorTest, MoveAssignmentReleasesTarget) {
     secure_vector<int> a(4);
     a[0] = 10;
     secure_vector<int> b(2);
@@ -85,8 +74,7 @@ TEST(SecureVectorTest, MoveAssignmentReleasesTarget)
     EXPECT_EQ(a.data(), nullptr);
 }
 
-TEST(SecureVectorTest, ResizePreservesContent)
-{
+TEST(SecureVectorTest, ResizePreservesContent) {
     secure_vector<int> v(4);
     v[0] = 1;
     v[1] = 2;
@@ -97,8 +85,7 @@ TEST(SecureVectorTest, ResizePreservesContent)
     EXPECT_NE(v.data(), nullptr);
 }
 
-TEST(SecureVectorTest, ResizeShrinks)
-{
+TEST(SecureVectorTest, ResizeShrinks) {
     secure_vector<int> v(8);
     for (int i = 0; i < 8; ++i)
         v[i] = i;
@@ -109,10 +96,9 @@ TEST(SecureVectorTest, ResizeShrinks)
     EXPECT_EQ(v[2], 2);
 }
 
-TEST(SecureVectorDeathTest, StaticAssertNonTrivial)
-{
+TEST(SecureVectorDeathTest, StaticAssertNonTrivial) {
     EXPECT_FALSE(std::is_trivially_copyable_v<std::string>);
 }
 
-} // namespace
-} // namespace ssm::v1
+}  // namespace
+}  // namespace ssm::v1

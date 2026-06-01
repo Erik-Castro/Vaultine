@@ -1,10 +1,10 @@
-#include <gtest/gtest.h>
+#include "db/secrets.h"
 
+#include <gtest/gtest.h>
 #include <sqlcipher.h>
 
 #include "db/database.h"
 #include "db/users.h"
-#include "db/secrets.h"
 
 namespace ssm::v1 {
 namespace {
@@ -13,15 +13,13 @@ static const unsigned char TEST_KEY[] = "test-key-32-bytes-for-sqlcipher!!";
 static const unsigned char HASH[] =
     "$argon2id$v=19$m=65536,t=2,p=1$test-salt-here-1234$hash-value-goes-here!";
 static const unsigned char PRIV_KEY[] = "private-key-data-32-bytes!!";
-static const unsigned char PUB_KEY[]  = "public-key-data-32-bytes!!";
-static const unsigned char NONCE[]    = "12b-nonce!!";
-static const unsigned char TAG[]      = "16b-tag--here!!!";
+static const unsigned char PUB_KEY[] = "public-key-data-32-bytes!!";
+static const unsigned char NONCE[] = "12b-nonce!!";
+static const unsigned char TAG[] = "16b-tag--here!!!";
 
-class SecretsTest : public ::testing::Test
-{
+class SecretsTest : public ::testing::Test {
 protected:
-    void SetUp() override
-    {
+    void SetUp() override {
         ASSERT_TRUE(db_open(":memory:", TEST_KEY, sizeof(TEST_KEY) - 1, &db_));
         ASSERT_TRUE(db_create_schema(db_));
 
@@ -30,22 +28,15 @@ protected:
         user_id_ = uid;
     }
 
-    void TearDown() override
-    {
-        db_close(db_);
-    }
+    void TearDown() override { db_close(db_); }
 
     sqlite3* db_ = nullptr;
     int64_t user_id_ = 0;
 };
 
-TEST_F(SecretsTest, StoreAndFind)
-{
-    EXPECT_TRUE(secrets_store(db_, user_id_, "my-key",
-                              PRIV_KEY, sizeof(PRIV_KEY),
-                              PUB_KEY, sizeof(PUB_KEY),
-                              NONCE, sizeof(NONCE),
-                              TAG, sizeof(TAG),
+TEST_F(SecretsTest, StoreAndFind) {
+    EXPECT_TRUE(secrets_store(db_, user_id_, "my-key", PRIV_KEY, sizeof(PRIV_KEY), PUB_KEY,
+                              sizeof(PUB_KEY), NONCE, sizeof(NONCE), TAG, sizeof(TAG),
                               "my ssh key"));
 
     secret_row row{};
@@ -58,20 +49,14 @@ TEST_F(SecretsTest, StoreAndFind)
     EXPECT_EQ(row.description, "my ssh key");
 }
 
-TEST_F(SecretsTest, FindNonExistentReturnsFalse)
-{
+TEST_F(SecretsTest, FindNonExistentReturnsFalse) {
     secret_row row{};
     EXPECT_FALSE(secrets_find(db_, user_id_, "nonexistent", &row));
 }
 
-TEST_F(SecretsTest, DeleteSecret)
-{
-    ASSERT_TRUE(secrets_store(db_, user_id_, "my-key",
-                              PRIV_KEY, sizeof(PRIV_KEY),
-                              nullptr, 0,
-                              NONCE, sizeof(NONCE),
-                              TAG, sizeof(TAG),
-                              nullptr));
+TEST_F(SecretsTest, DeleteSecret) {
+    ASSERT_TRUE(secrets_store(db_, user_id_, "my-key", PRIV_KEY, sizeof(PRIV_KEY), nullptr, 0,
+                              NONCE, sizeof(NONCE), TAG, sizeof(TAG), nullptr));
 
     EXPECT_TRUE(secrets_delete(db_, user_id_, "my-key"));
 
@@ -79,47 +64,31 @@ TEST_F(SecretsTest, DeleteSecret)
     EXPECT_FALSE(secrets_find(db_, user_id_, "my-key", &row));
 }
 
-TEST_F(SecretsTest, DeleteNonExistentReturnsFalse)
-{
+TEST_F(SecretsTest, DeleteNonExistentReturnsFalse) {
     EXPECT_FALSE(secrets_delete(db_, user_id_, "ghost"));
 }
 
-TEST_F(SecretsTest, ListSecrets)
-{
-    ASSERT_TRUE(secrets_store(db_, user_id_, "ssh",
-                              PRIV_KEY, sizeof(PRIV_KEY),
-                              PUB_KEY, sizeof(PUB_KEY),
-                              NONCE, sizeof(NONCE),
-                              TAG, sizeof(TAG),
-                              "ssh key"));
+TEST_F(SecretsTest, ListSecrets) {
+    ASSERT_TRUE(secrets_store(db_, user_id_, "ssh", PRIV_KEY, sizeof(PRIV_KEY), PUB_KEY,
+                              sizeof(PUB_KEY), NONCE, sizeof(NONCE), TAG, sizeof(TAG), "ssh key"));
 
-    ASSERT_TRUE(secrets_store(db_, user_id_, "gpg",
-                              PRIV_KEY, sizeof(PRIV_KEY),
-                              nullptr, 0,
-                              NONCE, sizeof(NONCE),
-                              TAG, sizeof(TAG),
-                              "gpg key"));
+    ASSERT_TRUE(secrets_store(db_, user_id_, "gpg", PRIV_KEY, sizeof(PRIV_KEY), nullptr, 0, NONCE,
+                              sizeof(NONCE), TAG, sizeof(TAG), "gpg key"));
 
     std::vector<secret_row> rows;
     EXPECT_TRUE(secrets_list_for_user(db_, user_id_, &rows));
     EXPECT_EQ(rows.size(), 2);
 }
 
-TEST_F(SecretsTest, ListEmptyUserReturnsEmpty)
-{
+TEST_F(SecretsTest, ListEmptyUserReturnsEmpty) {
     std::vector<secret_row> rows;
     EXPECT_TRUE(secrets_list_for_user(db_, user_id_, &rows));
     EXPECT_TRUE(rows.empty());
 }
 
-TEST_F(SecretsTest, DeleteUserCascadesSecrets)
-{
-    ASSERT_TRUE(secrets_store(db_, user_id_, "my-key",
-                              PRIV_KEY, sizeof(PRIV_KEY),
-                              nullptr, 0,
-                              NONCE, sizeof(NONCE),
-                              TAG, sizeof(TAG),
-                              nullptr));
+TEST_F(SecretsTest, DeleteUserCascadesSecrets) {
+    ASSERT_TRUE(secrets_store(db_, user_id_, "my-key", PRIV_KEY, sizeof(PRIV_KEY), nullptr, 0,
+                              NONCE, sizeof(NONCE), TAG, sizeof(TAG), nullptr));
 
     EXPECT_TRUE(users_delete(db_, user_id_));
 
@@ -127,21 +96,12 @@ TEST_F(SecretsTest, DeleteUserCascadesSecrets)
     EXPECT_FALSE(secrets_find(db_, user_id_, "my-key", &row));
 }
 
-TEST_F(SecretsTest, MultipleSecretsWithDifferentNames)
-{
-    EXPECT_TRUE(secrets_store(db_, user_id_, "key-a",
-                              PRIV_KEY, sizeof(PRIV_KEY),
-                              nullptr, 0,
-                              NONCE, sizeof(NONCE),
-                              TAG, sizeof(TAG),
-                              nullptr));
+TEST_F(SecretsTest, MultipleSecretsWithDifferentNames) {
+    EXPECT_TRUE(secrets_store(db_, user_id_, "key-a", PRIV_KEY, sizeof(PRIV_KEY), nullptr, 0, NONCE,
+                              sizeof(NONCE), TAG, sizeof(TAG), nullptr));
 
-    EXPECT_TRUE(secrets_store(db_, user_id_, "key-b",
-                              PRIV_KEY, sizeof(PRIV_KEY),
-                              nullptr, 0,
-                              NONCE, sizeof(NONCE),
-                              TAG, sizeof(TAG),
-                              nullptr));
+    EXPECT_TRUE(secrets_store(db_, user_id_, "key-b", PRIV_KEY, sizeof(PRIV_KEY), nullptr, 0, NONCE,
+                              sizeof(NONCE), TAG, sizeof(TAG), nullptr));
 
     secret_row row_a;
     EXPECT_TRUE(secrets_find(db_, user_id_, "key-a", &row_a));
@@ -152,5 +112,5 @@ TEST_F(SecretsTest, MultipleSecretsWithDifferentNames)
     EXPECT_EQ(row_b.name, "key-b");
 }
 
-} // namespace
-} // namespace ssm::v1
+}  // namespace
+}  // namespace ssm::v1

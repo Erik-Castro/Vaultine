@@ -5,8 +5,7 @@
 
 namespace ssm::v1 {
 
-static bool sqlcipher_is_present(sqlite3* db)
-{
+static bool sqlcipher_is_present(sqlite3* db) {
     auto* stmt = static_cast<sqlite3_stmt*>(nullptr);
     int rc = sqlite3_prepare_v2(db, "PRAGMA cipher_version", -1, &stmt, nullptr);
     if (rc != SQLITE_OK)
@@ -16,13 +15,10 @@ static bool sqlcipher_is_present(sqlite3* db)
     return rc == SQLITE_ROW;
 }
 
-static bool set_key_via_pragma(sqlite3* db,
-                               const unsigned char* key, size_t key_len)
-{
+static bool set_key_via_pragma(sqlite3* db, const unsigned char* key, size_t key_len) {
     std::string sql = "PRAGMA key = x'";
     static const char hex[] = "0123456789abcdef";
-    for (size_t i = 0; i < key_len; ++i)
-    {
+    for (size_t i = 0; i < key_len; ++i) {
         sql += hex[key[i] >> 4];
         sql += hex[key[i] & 0x0f];
     }
@@ -34,10 +30,7 @@ static bool set_key_via_pragma(sqlite3* db,
     return ok;
 }
 
-bool db_open(const char* path,
-             const unsigned char* key, size_t key_len,
-             sqlite3** out)
-{
+bool db_open(const char* path, const unsigned char* key, size_t key_len, sqlite3** out) {
     if (!path || !out)
         return false;
 
@@ -46,16 +39,13 @@ bool db_open(const char* path,
     if (sqlite3_open_v2(path, out, flags, nullptr) != SQLITE_OK)
         return false;
 
-    if (sqlcipher_is_present(*out))
-    {
-        if (!key || key_len == 0)
-        {
+    if (sqlcipher_is_present(*out)) {
+        if (!key || key_len == 0) {
             sqlite3_close(*out);
             *out = nullptr;
             return false;
         }
-        if (!set_key_via_pragma(*out, key, key_len))
-        {
+        if (!set_key_via_pragma(*out, key, key_len)) {
             sqlite3_close(*out);
             *out = nullptr;
             return false;
@@ -65,14 +55,12 @@ bool db_open(const char* path,
     return true;
 }
 
-void db_close(sqlite3* db)
-{
+void db_close(sqlite3* db) {
     if (db)
         sqlite3_close(db);
 }
 
-bool db_create_schema(sqlite3* db)
-{
+bool db_create_schema(sqlite3* db) {
     if (!db)
         return false;
 
@@ -109,8 +97,7 @@ bool db_create_schema(sqlite3* db)
         ");";
 
     char* err = nullptr;
-    if (sqlite3_exec(db, sql, nullptr, nullptr, &err) != SQLITE_OK)
-    {
+    if (sqlite3_exec(db, sql, nullptr, nullptr, &err) != SQLITE_OK) {
         sqlite3_free(err);
         return false;
     }
@@ -118,4 +105,4 @@ bool db_create_schema(sqlite3* db)
     return true;
 }
 
-} // namespace ssm::v1
+}  // namespace ssm::v1

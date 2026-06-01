@@ -86,5 +86,25 @@ ctest --test-dir build --output-on-failure
 ./build/tests/ssm_test
 ```
 
+### Visibility
+- API pública: marcada com `SSM_EXPORT` em `include/ssm/ssm.h`
+- Internals: `-fvisibility=hidden` via `-DSSM_VISIBILITY_HIDDEN=ON`
+- Símbolos internos (`ssm::v1`) invisíveis para quem linkedita o .so
+- Dev (default): `OFF` — testes acessam símbolos internos do .so
+
 ### Lint / formatação
-*Nenhum configurado ainda. Quando clang-format/.clang-tidy for adicionado, registrar aqui.*
+```bash
+# clang-format (formatar todo o código)
+find src/ include/ tests/ -name '*.cc' -o -name '*.h' | xargs clang-format -i
+
+# clang-tidy (precisa de compile_commands.json)
+cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+run-clang-tidy -p build src/
+```
+
+### Release build (produção)
+```bash
+cmake -B build-release -DSSM_VISIBILITY_HIDDEN=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release
+# Apenas 8 símbolos SSM_EXPORT visíveis no .so
+```

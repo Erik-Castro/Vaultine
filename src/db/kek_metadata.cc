@@ -2,11 +2,9 @@
 
 namespace ssm::v1 {
 
-bool kek_store(sqlite3* db, int64_t user_id,
-               const unsigned char* wrapped_kek, size_t wrapped_kek_len,
-               const unsigned char* salt, size_t salt_len,
-               const char* expires_at)
-{
+bool kek_store(sqlite3* db, int64_t user_id, const unsigned char* wrapped_kek,
+               size_t wrapped_kek_len, const unsigned char* salt, size_t salt_len,
+               const char* expires_at) {
     if (!db || !wrapped_kek || !salt || !expires_at)
         return false;
 
@@ -23,14 +21,12 @@ bool kek_store(sqlite3* db, int64_t user_id,
     do {
         sqlite3_bind_int64(stmt, 1, user_id);
 
-        if (sqlite3_bind_blob(stmt, 2, wrapped_kek,
-                              static_cast<int>(wrapped_kek_len),
+        if (sqlite3_bind_blob(stmt, 2, wrapped_kek, static_cast<int>(wrapped_kek_len),
                               SQLITE_TRANSIENT) != SQLITE_OK)
             break;
 
-        if (sqlite3_bind_blob(stmt, 3, salt,
-                              static_cast<int>(salt_len),
-                              SQLITE_TRANSIENT) != SQLITE_OK)
+        if (sqlite3_bind_blob(stmt, 3, salt, static_cast<int>(salt_len), SQLITE_TRANSIENT) !=
+            SQLITE_OK)
             break;
 
         if (sqlite3_bind_text(stmt, 4, expires_at, -1, SQLITE_TRANSIENT) != SQLITE_OK)
@@ -46,8 +42,7 @@ bool kek_store(sqlite3* db, int64_t user_id,
     return ok;
 }
 
-bool kek_find_by_user(sqlite3* db, int64_t user_id, kek_row* out)
-{
+bool kek_find_by_user(sqlite3* db, int64_t user_id, kek_row* out) {
     if (!db || !out)
         return false;
 
@@ -67,16 +62,14 @@ bool kek_find_by_user(sqlite3* db, int64_t user_id, kek_row* out)
         if (sqlite3_step(stmt) != SQLITE_ROW)
             break;
 
-        out->id     = sqlite3_column_int64(stmt, 0);
+        out->id = sqlite3_column_int64(stmt, 0);
         out->user_id = sqlite3_column_int64(stmt, 1);
 
-        auto* wk = static_cast<const unsigned char*>(
-            sqlite3_column_blob(stmt, 2));
+        auto* wk = static_cast<const unsigned char*>(sqlite3_column_blob(stmt, 2));
         auto wk_len = static_cast<size_t>(sqlite3_column_bytes(stmt, 2));
         out->wrapped_kek.assign(wk, wk + wk_len);
 
-        auto* s = static_cast<const unsigned char*>(
-            sqlite3_column_blob(stmt, 3));
+        auto* s = static_cast<const unsigned char*>(sqlite3_column_blob(stmt, 3));
         auto s_len = static_cast<size_t>(sqlite3_column_bytes(stmt, 3));
         out->salt.assign(s, s + s_len);
 
@@ -90,11 +83,9 @@ bool kek_find_by_user(sqlite3* db, int64_t user_id, kek_row* out)
     return ok;
 }
 
-bool kek_update(sqlite3* db, int64_t user_id,
-                const unsigned char* wrapped_kek, size_t wrapped_kek_len,
-                const unsigned char* salt, size_t salt_len,
-                const char* expires_at)
-{
+bool kek_update(sqlite3* db, int64_t user_id, const unsigned char* wrapped_kek,
+                size_t wrapped_kek_len, const unsigned char* salt, size_t salt_len,
+                const char* expires_at) {
     if (!db || !wrapped_kek || !salt || !expires_at)
         return false;
 
@@ -109,14 +100,12 @@ bool kek_update(sqlite3* db, int64_t user_id,
     bool ok = false;
 
     do {
-        if (sqlite3_bind_blob(stmt, 1, wrapped_kek,
-                              static_cast<int>(wrapped_kek_len),
+        if (sqlite3_bind_blob(stmt, 1, wrapped_kek, static_cast<int>(wrapped_kek_len),
                               SQLITE_TRANSIENT) != SQLITE_OK)
             break;
 
-        if (sqlite3_bind_blob(stmt, 2, salt,
-                              static_cast<int>(salt_len),
-                              SQLITE_TRANSIENT) != SQLITE_OK)
+        if (sqlite3_bind_blob(stmt, 2, salt, static_cast<int>(salt_len), SQLITE_TRANSIENT) !=
+            SQLITE_OK)
             break;
 
         if (sqlite3_bind_text(stmt, 3, expires_at, -1, SQLITE_TRANSIENT) != SQLITE_OK)
@@ -134,8 +123,7 @@ bool kek_update(sqlite3* db, int64_t user_id,
     return ok;
 }
 
-bool kek_delete(sqlite3* db, int64_t user_id)
-{
+bool kek_delete(sqlite3* db, int64_t user_id) {
     if (!db)
         return false;
 
@@ -158,4 +146,4 @@ bool kek_delete(sqlite3* db, int64_t user_id)
     return ok;
 }
 
-} // namespace ssm::v1
+}  // namespace ssm::v1

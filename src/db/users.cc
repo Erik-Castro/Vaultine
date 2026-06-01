@@ -4,15 +4,12 @@
 
 namespace ssm::v1 {
 
-bool users_create(sqlite3* db, const char* username,
-                  const unsigned char* password_hash, size_t hash_len,
-                  int64_t* out_id)
-{
+bool users_create(sqlite3* db, const char* username, const unsigned char* password_hash,
+                  size_t hash_len, int64_t* out_id) {
     if (!db || !username || !password_hash || !out_id)
         return false;
 
-    const char* sql =
-        "INSERT INTO users (username, password_hash) VALUES (?, ?)";
+    const char* sql = "INSERT INTO users (username, password_hash) VALUES (?, ?)";
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK)
@@ -24,8 +21,7 @@ bool users_create(sqlite3* db, const char* username,
         if (sqlite3_bind_text(stmt, 1, username, -1, SQLITE_TRANSIENT) != SQLITE_OK)
             break;
 
-        if (sqlite3_bind_blob(stmt, 2, password_hash,
-                              static_cast<int>(hash_len),
+        if (sqlite3_bind_blob(stmt, 2, password_hash, static_cast<int>(hash_len),
                               SQLITE_TRANSIENT) != SQLITE_OK)
             break;
 
@@ -40,14 +36,11 @@ bool users_create(sqlite3* db, const char* username,
     return ok;
 }
 
-bool users_find_by_username(sqlite3* db, const char* username,
-                            user_row* out)
-{
+bool users_find_by_username(sqlite3* db, const char* username, user_row* out) {
     if (!db || !username || !out)
         return false;
 
-    const char* sql =
-        "SELECT id, password_hash FROM users WHERE username = ?";
+    const char* sql = "SELECT id, password_hash FROM users WHERE username = ?";
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK)
@@ -64,8 +57,7 @@ bool users_find_by_username(sqlite3* db, const char* username,
 
         out->id = sqlite3_column_int64(stmt, 0);
 
-        auto* blob = static_cast<const unsigned char*>(
-            sqlite3_column_blob(stmt, 1));
+        auto* blob = static_cast<const unsigned char*>(sqlite3_column_blob(stmt, 1));
         auto blob_len = static_cast<size_t>(sqlite3_column_bytes(stmt, 1));
         out->password_hash.assign(blob, blob + blob_len);
 
@@ -76,8 +68,7 @@ bool users_find_by_username(sqlite3* db, const char* username,
     return ok;
 }
 
-bool users_delete(sqlite3* db, int64_t user_id)
-{
+bool users_delete(sqlite3* db, int64_t user_id) {
     if (!db)
         return false;
 
@@ -100,4 +91,4 @@ bool users_delete(sqlite3* db, int64_t user_id)
     return ok;
 }
 
-} // namespace ssm::v1
+}  // namespace ssm::v1

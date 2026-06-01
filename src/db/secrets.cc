@@ -4,31 +4,26 @@
 
 namespace ssm::v1 {
 
-static bool read_secret_row(sqlite3_stmt* stmt, secret_row* out)
-{
-    out->id     = sqlite3_column_int64(stmt, 0);
+static bool read_secret_row(sqlite3_stmt* stmt, secret_row* out) {
+    out->id = sqlite3_column_int64(stmt, 0);
     out->user_id = sqlite3_column_int64(stmt, 1);
 
     auto* name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
     out->name = name ? name : "";
 
-    auto* pk = static_cast<const unsigned char*>(
-        sqlite3_column_blob(stmt, 3));
+    auto* pk = static_cast<const unsigned char*>(sqlite3_column_blob(stmt, 3));
     auto pk_len = static_cast<size_t>(sqlite3_column_bytes(stmt, 3));
     out->private_key.assign(pk, pk + pk_len);
 
-    auto* pub = static_cast<const unsigned char*>(
-        sqlite3_column_blob(stmt, 4));
+    auto* pub = static_cast<const unsigned char*>(sqlite3_column_blob(stmt, 4));
     auto pub_len = static_cast<size_t>(sqlite3_column_bytes(stmt, 4));
     out->public_key.assign(pub, pub + pub_len);
 
-    auto* n = static_cast<const unsigned char*>(
-        sqlite3_column_blob(stmt, 5));
+    auto* n = static_cast<const unsigned char*>(sqlite3_column_blob(stmt, 5));
     auto n_len = static_cast<size_t>(sqlite3_column_bytes(stmt, 5));
     out->nonce.assign(n, n + n_len);
 
-    auto* t = static_cast<const unsigned char*>(
-        sqlite3_column_blob(stmt, 6));
+    auto* t = static_cast<const unsigned char*>(sqlite3_column_blob(stmt, 6));
     auto t_len = static_cast<size_t>(sqlite3_column_bytes(stmt, 6));
     out->tag.assign(t, t + t_len);
 
@@ -41,14 +36,10 @@ static bool read_secret_row(sqlite3_stmt* stmt, secret_row* out)
     return true;
 }
 
-bool secrets_store(sqlite3* db, int64_t user_id,
-                   const char* name,
-                   const unsigned char* private_key, size_t private_key_len,
-                   const unsigned char* public_key, size_t public_key_len,
-                   const unsigned char* nonce, size_t nonce_len,
-                   const unsigned char* tag, size_t tag_len,
-                   const char* description)
-{
+bool secrets_store(sqlite3* db, int64_t user_id, const char* name, const unsigned char* private_key,
+                   size_t private_key_len, const unsigned char* public_key, size_t public_key_len,
+                   const unsigned char* nonce, size_t nonce_len, const unsigned char* tag,
+                   size_t tag_len, const char* description) {
     if (!db || !private_key || !nonce || !tag)
         return false;
 
@@ -69,24 +60,20 @@ bool secrets_store(sqlite3* db, int64_t user_id,
         if (sqlite3_bind_text(stmt, 2, name, -1, SQLITE_TRANSIENT) != SQLITE_OK)
             break;
 
-        if (sqlite3_bind_blob(stmt, 3, private_key,
-                              static_cast<int>(private_key_len),
+        if (sqlite3_bind_blob(stmt, 3, private_key, static_cast<int>(private_key_len),
                               SQLITE_TRANSIENT) != SQLITE_OK)
             break;
 
-        if (sqlite3_bind_blob(stmt, 4, public_key,
-                              static_cast<int>(public_key_len),
+        if (sqlite3_bind_blob(stmt, 4, public_key, static_cast<int>(public_key_len),
                               SQLITE_TRANSIENT) != SQLITE_OK)
             break;
 
-        if (sqlite3_bind_blob(stmt, 5, nonce,
-                              static_cast<int>(nonce_len),
-                              SQLITE_TRANSIENT) != SQLITE_OK)
+        if (sqlite3_bind_blob(stmt, 5, nonce, static_cast<int>(nonce_len), SQLITE_TRANSIENT) !=
+            SQLITE_OK)
             break;
 
-        if (sqlite3_bind_blob(stmt, 6, tag,
-                              static_cast<int>(tag_len),
-                              SQLITE_TRANSIENT) != SQLITE_OK)
+        if (sqlite3_bind_blob(stmt, 6, tag, static_cast<int>(tag_len), SQLITE_TRANSIENT) !=
+            SQLITE_OK)
             break;
 
         if (sqlite3_bind_text(stmt, 7, description, -1, SQLITE_TRANSIENT) != SQLITE_OK)
@@ -102,9 +89,7 @@ bool secrets_store(sqlite3* db, int64_t user_id,
     return ok;
 }
 
-bool secrets_find(sqlite3* db, int64_t user_id, const char* name,
-                  secret_row* out)
-{
+bool secrets_find(sqlite3* db, int64_t user_id, const char* name, secret_row* out) {
     if (!db || !name || !out)
         return false;
 
@@ -136,13 +121,11 @@ bool secrets_find(sqlite3* db, int64_t user_id, const char* name,
     return ok;
 }
 
-bool secrets_delete(sqlite3* db, int64_t user_id, const char* name)
-{
+bool secrets_delete(sqlite3* db, int64_t user_id, const char* name) {
     if (!db || !name)
         return false;
 
-    const char* sql =
-        "DELETE FROM secrets WHERE user_id = ? AND name = ?";
+    const char* sql = "DELETE FROM secrets WHERE user_id = ? AND name = ?";
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK)
@@ -162,15 +145,11 @@ bool secrets_delete(sqlite3* db, int64_t user_id, const char* name)
     return ok;
 }
 
-bool secrets_list(sqlite3* db, int64_t user_id,
-                  std::vector<secret_row>* out)
-{
+bool secrets_list(sqlite3* db, int64_t user_id, std::vector<secret_row>* out) {
     return secrets_list_for_user(db, user_id, out);
 }
 
-bool secrets_list_for_user(sqlite3* db, int64_t user_id,
-                           std::vector<secret_row>* out)
-{
+bool secrets_list_for_user(sqlite3* db, int64_t user_id, std::vector<secret_row>* out) {
     if (!db || !out)
         return false;
 
@@ -190,8 +169,7 @@ bool secrets_list_for_user(sqlite3* db, int64_t user_id,
     do {
         sqlite3_bind_int64(stmt, 1, user_id);
 
-        while (sqlite3_step(stmt) == SQLITE_ROW)
-        {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
             secret_row row;
             read_secret_row(stmt, &row);
             out->push_back(std::move(row));
@@ -204,4 +182,4 @@ bool secrets_list_for_user(sqlite3* db, int64_t user_id,
     return ok;
 }
 
-} // namespace ssm::v1
+}  // namespace ssm::v1

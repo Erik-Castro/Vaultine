@@ -1,0 +1,15 @@
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 100
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+BreakBeforeBraces: Attach
+DerivePointerAlignment: false
+PointerAlignment: Left
+FixNamespaceComments: true
+IncludeBlocks: Regroup
+SortIncludes: true
+SpaceAfterCStyleCast: true
+UseTab: Never
