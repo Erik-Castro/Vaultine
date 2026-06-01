@@ -30,3 +30,19 @@ target_link_libraries(ssm_test
 # LLD note: no --allow-shlib-undefined needed — sqlcipher PRAGMA key avoids sqlite3_key symbol
 
 add_test(NAME ssm_test COMMAND ssm_test)
+
+# ── Fuzzing targets (clang + libFuzzer) ─────────────────────────────────
+option(SSM_FUZZING "Build libFuzzer fuzz targets (requires clang)" OFF)
+if(SSM_FUZZING)
+    add_executable(fuzz_api fuzz/fuzz_api.cc)
+    target_include_directories(fuzz_api PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(fuzz_api PRIVATE ssm)
+    target_compile_options(fuzz_api PRIVATE -fsanitize=fuzzer)
+    target_link_options(fuzz_api PRIVATE -fsanitize=fuzzer)
+
+    # Add seed corpus as fuzz test (runs for 10s each)
+    add_test(NAME fuzz_api_quick
+        COMMAND fuzz_api -max_total_time=10 -runs=100000
+            ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/api/
+    )
+endif()

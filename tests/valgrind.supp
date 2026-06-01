@@ -1,0 +1,8 @@
+{
+   <libsodium-internal-alloc>
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   ...
+   obj:*libsodium*
+}

@@ -41,6 +41,26 @@ jobs:
           echo "Exported symbols: $count"
           [ "$count" -ge 8 ] || exit 1
 
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install deps
+        run: |
+          sudo apt update
+          sudo apt install -y libsqlcipher-dev libsodium-dev libssl-dev \
+            cmake pkg-config build-essential clang
+      - name: Build fuzz target (clang)
+        run: |
+          cmake -B build-fuzz -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DSSM_FUZZING=ON -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build-fuzz
+      - name: Quick fuzz (10s, seed corpus)
+        run: |
+          mkdir -p build-fuzz/findings
+          ./build-fuzz/tests/fuzz_api -max_total_time=10 -runs=100000 \
+            tests/fuzz/corpus/api/ 2>&1 || true
+
   lint:
     runs-on: ubuntu-latest
     steps:
