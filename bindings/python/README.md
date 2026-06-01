@@ -1,6 +1,6 @@
-# SSM Python Bindings
+# Vaultine Python Bindings
 
-Binding Python (ctypes) para a biblioteca SSM (libssm.so).
+Binding Python (ctypes) para a biblioteca Vaultine (`libssm.so`).
 
 ## Requisitos
 

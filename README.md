@@ -1,7 +1,7 @@
-# SSM — Software Security Module
+# Vaultine — Gestão de Segredos Multi-Tenant
 
 <p align="center">
-  <a href="assets/ssm-logo.svg"><img src="assets/ssm-logo.svg" alt="SSM Logo" width="200" height="200"></a>
+  <a href="assets/vaultine-logo.svg"><img src="assets/vaultine-logo.svg" alt="Vaultine Logo" width="200" height="200"></a>
 </p>
 
 Biblioteca dinâmica C++ (.so) POSIX para gerenciamento criptográfico de segredos multi-tenant com SQLCipher.
@@ -25,7 +25,7 @@ Biblioteca dinâmica C++ (.so) POSIX para gerenciamento criptográfico de segred
 
 ## Visão Geral
 
-SSM é um cofre de chaves criptográficas multi-tenant. Cada usuário possui um **KEK** (Key Encryption Key) de 256-bit que protege todos os seus segredos. O KEK é armazenado **wrapped** (AES-KW-256) e só é deswrapped em memória durante operações, usando uma chave derivada do hash de autenticação do usuário + salt.
+Vaultine é um cofre de chaves criptográficas multi-tenant. Cada usuário possui um **KEK** (Key Encryption Key) de 256-bit que protege todos os seus segredos. O KEK é armazenado **wrapped** (AES-KW-256) e só é deswrapped em memória durante operações, usando uma chave derivada do hash de autenticação do usuário + salt.
 
 ### Conceitos
 
@@ -597,7 +597,7 @@ operação e resultado. Consultável diretamente via SQLite para auditoria foren
 
 ## Bindings
 
-A API pública do SSM é escrita em C puro com `extern "C"` e `SSM_EXPORT`,
+A API pública do Vaultine é escrita em C puro com `extern "C"` e `SSM_EXPORT`,
 o que permite chamar a biblioteca de praticamente qualquer linguagem via FFI
 (Foreign Function Interface).
 
@@ -621,7 +621,7 @@ o que permite chamar a biblioteca de praticamente qualquer linguagem via FFI
 | Handle | `ssm_handle*` — ponteiro opaco (armazenar como `void*` ou `usize`) |
 | Thread safety | `std::shared_mutex` interno — chamadas FFI seguras sem locks extra |
 | Strings | `const char*` UTF-8 (cópia imediata se precisar retain) |
-| Buffers | `unsigned char*` + `size_t` — caller aloca, SSM preenche |
+| Buffers | `unsigned char*` + `size_t` — caller aloca, Vaultine preenche |
 | Callbacks | `ssm_secret_list_cb` — `void(*)(const char*,..., void*)` |
 | Erros | Retorno `ssm_status` + `ssm_status_to_string()` |
 
@@ -631,8 +631,8 @@ o que permite chamar a biblioteca de praticamente qualquer linguagem via FFI
 |------------|-------------|-------|
 | **Caller** | **Caller** | Buffer de saída de `ssm_secret_get` (`private_key_out`, `public_key_out`) |
 | **Caller** | **Caller** | Struct `ssm_handle*` recebido de `ssm_init` (via `ssm_destroy`) |
-| **SSM** | **SSM** | String retornada por `ssm_status_to_string` (memória estática — não fazer free) |
-| **Caller** | — | Strings de entrada (`username`, `password`, `name`) — SSM copia internamente |
+| **Vaultine** | **Vaultine** | String retornada por `ssm_status_to_string` (memória estática — não fazer free) |
+| **Caller** | — | Strings de entrada (`username`, `password`, `name`) — Vaultine copia internamente |
 
 **`ssm_secret_get`**: Passe `private_key_len_out` com a capacidade do buffer. Se o buffer
 for pequeno, a API retorna `SSM_ERR_INTERNAL` e preenche o tamanho necessário.
@@ -698,11 +698,11 @@ extern "C" {
     fn ssm_status_to_string(status: i32) -> *const c_char;
 }
 
-pub struct Ssm {
+pub struct Vaultine {
     handle: *mut c_void,
 }
 
-impl Ssm {
+impl Vaultine {
     pub fn new(db_path: &str, db_key: &[u8]) -> Result<Self, i32> {
         let mut handle = std::ptr::null_mut();
         let path = CString::new(db_path).unwrap();
@@ -738,7 +738,7 @@ impl Ssm {
     }
 }
 
-impl Drop for Ssm {
+impl Drop for Vaultine {
     fn drop(&mut self) {
         unsafe { ssm_destroy(self.handle); }
     }
@@ -755,11 +755,11 @@ impl Drop for Ssm {
 import "C"
 import "unsafe"
 
-type SSM struct {
+type Vaultine struct {
     handle unsafe.Pointer
 }
 
-func New(dbPath string, dbKey []byte) (*SSM, error) {
+func New(dbPath string, dbKey []byte) (*Vaultine, error) {
     var h unsafe.Pointer
     cpath := C.CString(dbPath)
     defer C.free(unsafe.Pointer(cpath))
@@ -773,10 +773,10 @@ func New(dbPath string, dbKey []byte) (*SSM, error) {
     if st != C.SSM_OK {
         return nil, fmt.Errorf("ssm_init: %s", C.GoString(C.ssm_status_to_string(st)))
     }
-    return &SSM{handle: h}, nil
+    return &Vaultine{handle: h}, nil
 }
 
-func (s *SSM) SecretGet(username, name string) ([]byte, error) {
+func (s *Vaultine) SecretGet(username, name string) ([]byte, error) {
     cu := C.CString(username)
     cn := C.CString(name)
     defer C.free(unsafe.Pointer(cu))
@@ -791,7 +791,7 @@ func (s *SSM) SecretGet(username, name string) ([]byte, error) {
     return buf[:blen], nil
 }
 
-func (s *SSM) Close() {
+func (s *Vaultine) Close() {
     C.ssm_destroy(s.handle)
 }
 ```

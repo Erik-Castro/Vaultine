@@ -1,4 +1,4 @@
-# AGENTS.md — SSM (Software Security Module)
+# AGENTS.md — Vaultine
 
 **Projeto:** Biblioteca dinâmica C++ (.so) POSIX para gerenciamento criptográfico de segredos multi-tenant.
 

@@ -1,16 +1,16 @@
-# SSM: A Multi-Tenant Key Management Module for POSIX Systems
+# Vaultine: A Multi-Tenant Key Management Module for POSIX Systems
 
 **Cryptographic Design, Threat Model, and Security Guarantees**
 
 | Version | Date | Author |
 |---------|------|--------|
-| 1.1 | 2026-06 | SSM Engineering |
+| 1.1 | 2026-06 | Vaultine Engineering |
 
 ---
 
 ## Abstract
 
-We present **SSM** (Software Security Module), a C++ shared library (.so) for POSIX systems that provides cryptographic secret management for multi-tenant environments. SSM implements a hierarchical key architecture where each tenant's secrets are encrypted with a unique 256-bit Key Encryption Key (KEK), which is itself protected by a key-wrapping scheme (AES-KW-256) using a user-derived wrapping key. The system enforces KEK rotation every 90 days, performs atomic re-wrapping during rotation via SQLite transactions, supports password change with atomic KEK re-wrapping, and provides authenticated encryption (AES-GCM-256) for all stored secrets. A built-in audit log records all operations, and an LRU wrapping key cache (256 entries) eliminates redundant KDF invocations for high-throughput scenarios. This paper describes the threat model, cryptographic design rationale, security analysis, and implementation considerations.
+We present **Vaultine**, a C++ shared library (.so) for POSIX systems that provides cryptographic secret management for multi-tenant environments. Vaultine implements a hierarchical key architecture where each tenant's secrets are encrypted with a unique 256-bit Key Encryption Key (KEK), which is itself protected by a key-wrapping scheme (AES-KW-256) using a user-derived wrapping key. The system enforces KEK rotation every 90 days, performs atomic re-wrapping during rotation via SQLite transactions, supports password change with atomic KEK re-wrapping, and provides authenticated encryption (AES-GCM-256) for all stored secrets. A built-in audit log records all operations, and an LRU wrapping key cache (256 entries) eliminates redundant KDF invocations for high-throughput scenarios. This paper describes the threat model, cryptographic design rationale, security analysis, and implementation considerations.
 
 ---
 
@@ -18,7 +18,7 @@ We present **SSM** (Software Security Module), a C++ shared library (.so) for PO
 
 Modern applications must manage cryptographic keys for multiple tenants — cloud services, messaging platforms, financial systems, and healthcare applications all face the challenge of protecting tenant secrets while maintaining availability and performance. A naive approach of storing secrets in plaintext or using a single master key for all tenants exposes the system to catastrophic compromise: a single database breach leaks every tenant's secrets.
 
-SSM addresses this with a **per-tenant KEK** architecture. Each user (tenant) has an independent 256-bit AES key that protects only that user's secrets. This key never exists in plaintext on disk — it is stored wrapped (encrypted with another key) and is only unwrapped in memory for the duration of an operation. The wrapping key is itself derived from the user's authentication credentials via a memory-hard KDF (Argon2id), providing defense-in-depth.
+Vaultine addresses this with a **per-tenant KEK** architecture. Each user (tenant) has an independent 256-bit AES key that protects only that user's secrets. This key never exists in plaintext on disk — it is stored wrapped (encrypted with another key) and is only unwrapped in memory for the duration of an operation. The wrapping key is itself derived from the user's authentication credentials via a memory-hard KDF (Argon2id), providing defense-in-depth.
 
 ### 1.1 Design Goals
 
@@ -35,8 +35,8 @@ SSM addresses this with a **per-tenant KEK** architecture. Each user (tenant) ha
 
 ### 2.1 Assumptions
 
-- The **operating system** and **hardware** are trusted (SSM does not defend against kernel-level attackers, hardware keyloggers, or cold-boot attacks).
-- The **application** calling SSM is trusted with plaintext secrets during API calls — SSM provides no protection against a compromised application reading its own stack.
+- The **operating system** and **hardware** are trusted (Vaultine does not defend against kernel-level attackers, hardware keyloggers, or cold-boot attacks).
+- The **application** calling Vaultine is trusted with plaintext secrets during API calls — Vaultine provides no protection against a compromised application reading its own stack.
 - The **database file** (`db_path`) is stored on a filesystem that may be accessible to attackers (e.g., cloud volumes, backups, logs).
 - The **user's password** is the root of trust — weak passwords reduce security to the strength of the password.
 - The **memory** of the process is free from cross-process inspection (standard POSIX process isolation).
@@ -58,7 +58,7 @@ SSM addresses this with a **per-tenant KEK** architecture. Each user (tenant) ha
 - Physical attacks (JTAG, probing, glitching)
 - Compromised application memory (attacker with RCE in the calling process)
 - Denial of service against the SQLite database
-- Network-level attacks (SSM is not a network service)
+- Network-level attacks (Vaultine is not a network service)
 
 ---
 
@@ -70,7 +70,7 @@ SSM addresses this with a **per-tenant KEK** architecture. Each user (tenant) ha
 
 **Why**: Argon2id is the winner of the PHC (Password Hashing Competition) and is recommended by OWASP and NIST (SP 800-63B). It provides resistance against both GPU-based (memory-hard) and side-channel (data-independent) attacks.
 
-**SSM uses two distinct modes**:
+**Vaultine uses two distinct modes**:
 
 | Usage | Function | Output | Ops Limit | Mem Limit |
 |-------|----------|--------|-----------|-----------|
@@ -86,7 +86,7 @@ The password hash is stored in the `users.password_hash` column. The wrapping ke
 
 **Why**: AES Key Wrap (RFC 3394) is a NIST-standardized algorithm for encrypting cryptographic keys with other keys. It provides integrity and is simpler than a full AEAD mode because the plaintext is always a multiple of 8 bytes (key material).
 
-**Usage in SSM**: The 32-byte KEK is wrapped with a 32-byte wrapping key, producing a 40-byte output (32 bytes of ciphertext + 8 bytes of integrity check value). The result is stored in `kek_metadata.wrapped_kek`.
+**Usage in Vaultine**: The 32-byte KEK is wrapped with a 32-byte wrapping key, producing a 40-byte output (32 bytes of ciphertext + 8 bytes of integrity check value). The result is stored in `kek_metadata.wrapped_kek`.
 
 #### AES-GCM-256 (Galois/Counter Mode)
 
@@ -100,7 +100,7 @@ The password hash is stored in the `users.password_hash` column. The wrapping ke
 
 SQLCipher provides 256-bit AES in CBC mode with HMAC-SHA256 authentication for the entire database file. This protects the database when the application is not running. During operation, SQLCipher transparently encrypts/decrypts pages as they are read/written.
 
-On Termux (Android) and other platforms where SQLCipher is unavailable, SSM falls back to plain SQLite3. This is acceptable for development but should be avoided in production.
+On Termux (Android) and other platforms where SQLCipher is unavailable, Vaultine falls back to plain SQLite3. This is acceptable for development but should be avoided in production.
 
 ### 3.2 Key Hierarchy
 
@@ -204,7 +204,7 @@ Rotation (`ssm_kek_rotate`) is the most critical operation:
 
 ### 5.1 Secure Memory Wiping
 
-SSM uses a `secure_erase` function that:
+Vaultine uses a `secure_erase` function that:
 
 ```cpp
 template <typename T>
@@ -234,7 +234,7 @@ Errors are deliberately **opaque**: the API returns an enum value (`SSM_ERR_AUTH
 
 ### 5.4 SQLCipher Detection
 
-At build time, CMake detects whether SQLCipher headers and library are available. If not, SSM falls back to plain SQLite3 with a compile-time warning. This enables development on platforms like Termux where SQLCipher is unavailable, while ensuring production builds link with full encryption at rest.
+At build time, CMake detects whether SQLCipher headers and library are available. If not, Vaultine falls back to plain SQLite3 with a compile-time warning. This enables development on platforms like Termux where SQLCipher is unavailable, while ensuring production builds link with full encryption at rest.
 
 ---
 
@@ -298,7 +298,7 @@ Each salt is generated via `randombytes_buf` (libsodium, which uses the kernel's
 
 ### 7.1 No Hardware Integration
 
-SSM is a pure software solution. It does not integrate with HSMs, TPMs, or secure enclaves (SGX, SE). An attacker with root access to the machine can read the process memory and extract unwrapped KEKs during operations.
+Vaultine is a pure software solution. It does not integrate with HSMs, TPMs, or secure enclaves (SGX, SE). An attacker with root access to the machine can read the process memory and extract unwrapped KEKs during operations.
 
 **Mitigation**: Minimize the window during which KEKs are in plaintext. Each API call unwraps, uses, and wipes the KEK. Long-lived operations (rotation) hold the KEK in memory for the duration but wipe immediately after.
 
@@ -306,11 +306,11 @@ SSM is a pure software solution. It does not integrate with HSMs, TPMs, or secur
 
 The entire security model roots trust in the user's password. If a user chooses a weak password (e.g., `"123456"`), the password hash can be cracked offline with Argon2id (at cost of OPSLIMIT_MODERATE per attempt). Once the password is known, the wrapping key can be derived and the KEK unwrapped.
 
-**Mitigation**: Applications using SSM should enforce password strength policies (length, complexity, entropy requirements). SSM does not enforce this internally — password policy is the application's responsibility.
+**Mitigation**: Applications using Vaultine should enforce password strength policies (length, complexity, entropy requirements). Vaultine does not enforce this internally — password policy is the application's responsibility.
 
 ### 7.3 No Key Rotation Scheduling
 
-SSM provides `ssm_kek_rotate` but does not internally schedule or automate rotation. The application must:
+Vaultine provides `ssm_kek_rotate` but does not internally schedule or automate rotation. The application must:
 1. Check for `SSM_ERR_EXPIRED` after each operation.
 2. Call `ssm_kek_rotate` when needed.
 3. Handle the failure case if rotation fails (e.g., log, alert operator).
@@ -323,7 +323,7 @@ OpenSSL's AES implementations are not guaranteed constant-time on all platforms.
 
 ## 8. Comparison with Alternatives
 
-| Feature | SSM | HashiCorp Vault | AWS KMS | Azure Key Vault |
+| Feature | Vaultine | HashiCorp Vault | AWS KMS | Azure Key Vault |
 |---------|-----|-----------------|---------|-----------------|
 | Deployment | Embedded .so | Server (Go) | Cloud service | Cloud service |
 | Tenancy | Multi-tenant (app-level) | Multi-tenant | Per-KMS | Per-vault |
@@ -336,14 +336,14 @@ OpenSSL's AES implementations are not guaranteed constant-time on all platforms.
 | Attack surface | Minimal (library) | Large (HTTP server + API) | API surface | API surface |
 | Setup time | Seconds (link lib) | Hours (cluster) | Minutes | Minutes |
 
-### When to Use SSM
+### When to Use Vaultine
 
 - You need **embedded** key management (no separate server or network service).
 - You want **per-tenant** key isolation without managing per-tenant HSMs.
-- You need **offline-capable** operation (SSM works with just a local SQLite file).
+- You need **offline-capable** operation (Vaultine works with just a local SQLite file).
 - You want a **minimal** dependency footprint.
 
-### When Not to Use SSM
+### When Not to Use Vaultine
 
 - You need **FIPS 140-2/3** certified cryptography.
 - You need **hardware root of trust** (HSM, TPM, SE).

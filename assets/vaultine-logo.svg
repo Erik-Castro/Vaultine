@@ -59,15 +59,15 @@
     <path d="M-5,-2 L-5,-6 A5,5 0 0,1 5,-6 L5,-2" fill="none" stroke="#90caf9" stroke-width="1.5"/>
   </g>
 
-  <!-- SSM text -->
+  <!-- Vaultine text -->
   <text x="200" y="330" text-anchor="middle" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif"
-        font-size="52" font-weight="700" fill="#e3f2fd" letter-spacing="6">
-    SSM
+        font-size="44" font-weight="700" fill="#e3f2fd" letter-spacing="5">
+    VAULTINE
   </text>
 
   <!-- Subtitle -->
   <text x="200" y="358" text-anchor="middle" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif"
         font-size="12" font-weight="400" fill="#90caf9" letter-spacing="3" text-transform="uppercase">
-    SOFTWARE SECURITY MODULE
+    GESTÃO DE SEGREDOS
   </text>
 </svg>
