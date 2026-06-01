@@ -61,6 +61,24 @@ jobs:
           ./build-fuzz/tests/fuzz_api -max_total_time=10 -runs=100000 \
             tests/fuzz/corpus/api/ 2>&1 || true
 
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install deps
+        run: |
+          sudo apt update
+          sudo apt install -y libsqlcipher-dev libsodium-dev libssl-dev \
+            cmake pkg-config build-essential
+      - name: Build benchmarks
+        run: |
+          cmake -B build-bench -DSSM_BUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-bench --target ssm_bench
+      - name: Run benchmarks
+        run: |
+          ./build-bench/tests/ssm_bench --benchmark_min_time=0.1 \
+            --benchmark_out=bench_results.json --benchmark_out_format=json 2>&1 || true
+
   lint:
     runs-on: ubuntu-latest
     steps:

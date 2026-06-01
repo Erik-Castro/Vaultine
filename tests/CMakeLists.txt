@@ -31,6 +31,16 @@ target_link_libraries(ssm_test
 
 add_test(NAME ssm_test COMMAND ssm_test)
 
+# ── Benchmarks ─────────────────────────────────────────────────────────
+if(SSM_BUILD_BENCHMARKS)
+    add_executable(ssm_bench bench_ssm.cc)
+    target_include_directories(ssm_bench PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(ssm_bench PRIVATE ssm benchmark::benchmark)
+
+    # Benchmarks are informational only — never fail CI
+    add_test(NAME ssm_bench COMMAND ssm_bench --benchmark_min_time=0.1)
+endif()
+
 # ── Fuzzing targets (clang + libFuzzer) ─────────────────────────────────
 option(SSM_FUZZING "Build libFuzzer fuzz targets (requires clang)" OFF)
 if(SSM_FUZZING)
