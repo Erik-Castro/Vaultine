@@ -95,6 +95,15 @@ bool db_create_schema(sqlite3* db) {
         "  tag BLOB NOT NULL,"
         "  description TEXT,"
         "  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))"
+        ");"
+
+        "CREATE TABLE IF NOT EXISTS audit_log ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  user_id INTEGER,"
+        "  username TEXT NOT NULL,"
+        "  operation TEXT NOT NULL,"
+        "  result TEXT NOT NULL,"
+        "  timestamp TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))"
         ");";
 
     char* err = nullptr;

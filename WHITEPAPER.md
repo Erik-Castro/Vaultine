@@ -4,13 +4,13 @@
 
 | Version | Date | Author |
 |---------|------|--------|
-| 1.0 | 2026-06 | SSM Engineering |
+| 1.1 | 2026-06 | SSM Engineering |
 
 ---
 
 ## Abstract
 
-We present **SSM** (Software Security Module), a C++ shared library (.so) for POSIX systems that provides cryptographic secret management for multi-tenant environments. SSM implements a hierarchical key architecture where each tenant's secrets are encrypted with a unique 256-bit Key Encryption Key (KEK), which is itself protected by a key-wrapping scheme (AES-KW-256) using a user-derived wrapping key. The system enforces KEK rotation every 90 days, performs atomic re-wrapping during rotation via SQLite transactions, and provides authenticated encryption (AES-GCM-256) for all stored secrets. This paper describes the threat model, cryptographic design rationale, security analysis, and implementation considerations.
+We present **SSM** (Software Security Module), a C++ shared library (.so) for POSIX systems that provides cryptographic secret management for multi-tenant environments. SSM implements a hierarchical key architecture where each tenant's secrets are encrypted with a unique 256-bit Key Encryption Key (KEK), which is itself protected by a key-wrapping scheme (AES-KW-256) using a user-derived wrapping key. The system enforces KEK rotation every 90 days, performs atomic re-wrapping during rotation via SQLite transactions, supports password change with atomic KEK re-wrapping, and provides authenticated encryption (AES-GCM-256) for all stored secrets. A built-in audit log records all operations, and an LRU wrapping key cache (256 entries) eliminates redundant KDF invocations for high-throughput scenarios. This paper describes the threat model, cryptographic design rationale, security analysis, and implementation considerations.
 
 ---
 
@@ -133,6 +133,7 @@ Password (user-supplied)
 1. **Two-factor derivation**: The wrapping key depends on BOTH the user's password hash AND a randomly generated salt. An attacker needs both the database and the ability to compute Argon2id.
 2. **KEK independence**: Each tenant's KEK is independent — no master key or key-encryption key spans tenants.
 3. **KEK never on disk**: The KEK exists in plaintext only in volatile memory during API operations, and is wiped via `secure_erase` (wrapper over `memset_s`/`explicit_bzero` with compiler barrier) when the operation completes.
+4. **Wrapping key cache**: A 256-entry LRU cache in `ssm_handle` stores derived wrapping keys, skipping the Argon2id KDF on repeated operations for the same tenant. The cache is invalidated on password change or KEK rotation (when the wrapping key changes), and all entries are wiped with `secure_erase` in `ssm_destroy`.
 
 ---
 
@@ -152,15 +153,15 @@ When `ssm_user_register` is called:
 
 ### 4.2 Usage (Secret Operations)
 
-For every `ssm_secret_store` / `ssm_secret_get` / `ssm_secret_delete`:
+For every `ssm_secret_store` / `ssm_secret_get` / `ssm_secret_delete` / `ssm_secret_list`:
 
 1. Authenticate: `crypto_pwhash_str_verify(stored_hash, password)`. If fails → `SSM_ERR_AUTH`.
 2. Load `wrapped_kek` and `salt` from `kek_metadata`.
-3. Derive `wrapping_key = crypto_pwhash(stored_hash, salt, 32, OPSLIMIT_MODERATE)`.
+3. Attempt **wrapping key cache** lookup. On miss: derive `wrapping_key = crypto_pwhash(stored_hash, salt, 32, OPSLIMIT_MODERATE)` and insert into cache.
 4. `kek = aes_kw_unwrap(wrapped_kek, wrapping_key)`. If integrity fails → `SSM_ERR_INTERNAL`.
 5. Check expiration: `now > expires_at` → `SSM_ERR_EXPIRED` (after cleaning up kek).
 6. Perform the actual encrypt/decrypt operation.
-7. **Wipe all ephemeral key material** via `secure_erase`.
+7. **Wipe all ephemeral key material** via `secure_erase` (cache persists across calls).
 
 ### 4.3 Rotation
 
@@ -314,15 +315,7 @@ SSM provides `ssm_kek_rotate` but does not internally schedule or automate rotat
 2. Call `ssm_kek_rotate` when needed.
 3. Handle the failure case if rotation fails (e.g., log, alert operator).
 
-### 7.4 No Audit Logging
-
-SSM does not produce audit logs of operations (who accessed which secret, when KEK was rotated, etc.). This is left to the application layer.
-
-### 7.5 No Password Change
-
-SSM does not support changing a user's password. A password change would require re-wrapping the KEK with a new wrapping key (derived from the new password hash). This is architecturally straightforward but not yet implemented.
-
-### 7.6 Constant-Time Considerations
+### 7.4 Constant-Time Considerations
 
 OpenSSL's AES implementations are not guaranteed constant-time on all platforms. Cache-timing side channels may leak information about keys. For most deployment scenarios (cloud VMs, containers), this is not a practical attack vector, but it is a limitation compared to dedicated HSM solutions.
 
@@ -338,7 +331,7 @@ OpenSSL's AES implementations are not guaranteed constant-time on all platforms.
 | Encryption at rest | SQLCipher | Seal/Barrier | AWS-managed | Azure-managed |
 | Password KDF | Argon2id | PBKDF2/Argon2 | N/A | N/A |
 | Key rotation | Per-tenant, 90d default | Automatic | Automatic | Automatic |
-| Audit log | None | Built-in | CloudTrail | Azure Monitor |
+| Audit log | Built-in | Built-in | CloudTrail | Azure Monitor |
 | External dependency | OpenSSL + libsodium + SQLite | Internal DB (Raft) | N/A | N/A |
 | Attack surface | Minimal (library) | Large (HTTP server + API) | API surface | API surface |
 | Setup time | Seconds (link lib) | Hours (cluster) | Minutes | Minutes |
@@ -355,7 +348,6 @@ OpenSSL's AES implementations are not guaranteed constant-time on all platforms.
 - You need **FIPS 140-2/3** certified cryptography.
 - You need **hardware root of trust** (HSM, TPM, SE).
 - You need **automated key rotation scheduling**.
-- You need **built-in audit logging**.
 - You need **high-availability** with automatic failover.
 
 ---
@@ -374,33 +366,32 @@ Approximate performance measurements on a modern x86_64 Linux system (Intel i7-1
 | `ssm_secret_delete` | ~155,000 | Shorthand (unwraps KEK for expiration check) |
 | `ssm_kek_rotate` (10 secrets) | ~500,000 | Depends on secret count |
 
-**Note**: The dominant cost is Argon2id MODERATE (≈75–150 ms per KDF call). Each `store`/`get` operation does two KDF calls: one for the wrapping key and one internal to `crypto_pwhash` for verification. For high-throughput scenarios, consider caching derived keys (not yet implemented).
+**Note**: The dominant cost is Argon2id MODERATE (≈75–150 ms per KDF call). Each `store`/`get` operation does one KDF call (wrapping key) plus `crypto_pwhash_str_verify`. The built-in **wrapping key cache** (256-entry LRU) eliminates the KDF on subsequent operations for the same tenant — after the first call, subsequent `store`/`get` operations complete in ~1µs for the key unwrap step (AES-KW only).
 
 ---
 
-## 10. Future Work
+## 10. Implemented vs Future Work
 
-### 10.1 Key Caching
+The following features from the original design document have been implemented since v1.0:
 
-The dominant performance cost is the double Argon2id invocation per operation. A secure cache (e.g., `std::unordered_map` with LRU eviction and automatic wipe) could cache `wrapping_key` for frequently used tenants, reducing the overhead to a single AES unwrap per operation.
+| Feature | Section | Status |
+|---------|---------|--------|
+| Wrapping Key Cache (256-entry LRU) | `src/ssm.cc` — cache_lookup/insert/invalidate | ✅ Implemented |
+| `ssm_user_change_password` | `src/ssm.cc` — atomic re-wrap, same KEK | ✅ Implemented |
+| `ssm_user_delete` | `src/ssm.cc` — cascade delete via ON DELETE CASCADE | ✅ Implemented |
+| `ssm_secret_list` | `src/ssm.cc` — callback-based enumeration | ✅ Implemented |
+| `ssm_status_to_string` | `src/ssm.cc` — enum → string mapping | ✅ Implemented |
+| Audit Log (`audit_log` table) | `src/db/audit_log.h` — all 9 operations logged | ✅ Implemented |
+| `kek_version` rollback protection | `src/db/kek_metadata.cc` — version check on update | ✅ Implemented |
+| CMake install rules + package config | `src/CMakeLists.txt` + `cmake/ssmConfig.cmake.in` | ✅ Implemented |
 
-**Open issue**: Cache invalidation on password change / KEK rotation.
-
-### 10.2 Password Change
-
-Enable `ssm_user_change_password(old, new)`. The new password produces a new `password_hash`, which requires re-deriving the wrapping key and re-wrapping the KEK. This can be done without exposing the KEK — it is already in memory during the operation.
-
-### 10.3 Batch Operations
+### 10.1 Batch Operations
 
 For users with thousands of secrets, `ssm_kek_rotate` does one decrypt+encrypt per secret. Batch operations could parallelize this (e.g., using OpenMP or thread pools), though care must be taken with SQLite serialization.
 
-### 10.4 Master Key Integration
+### 10.2 Master Key Integration
 
 An optional master key (derived from a TPM or HSM) could provide an additional layer of protection. The master key would wrap each KEK, independent of the user-derived wrapping key. This would require both the master key AND the user's credentials to recover a KEK.
-
-### 10.5 Audit Trail
-
-A simple append-only `audit_log` table recording operation type, user_id, timestamp, and status. This would provide non-repudiation and support incident investigation.
 
 ---
 

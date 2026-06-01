@@ -3,6 +3,7 @@
 #include <sodium.h>
 
 #include <cstring>
+#include <ctime>
 #include <new>
 #include <shared_mutex>
 
@@ -10,6 +11,7 @@
 #include "crypto/aes_kw.h"
 #include "crypto/argon2id.h"
 #include "crypto/random.h"
+#include "db/audit_log.h"
 #include "db/database.h"
 #include "db/kek_metadata.h"
 #include "db/secrets.h"
@@ -19,10 +21,68 @@
 
 using namespace ssm::v1;
 
+constexpr size_t SSM_CACHE_MAX = 256;
+
+struct cache_entry {
+    int64_t user_id;
+    unsigned char key[KEK_KEY_LEN];
+    time_t last_used;
+    bool valid;
+};
+
 struct ssm_handle {
     sqlite3* db;
     std::shared_mutex mutex;
+    cache_entry cache[SSM_CACHE_MAX];
 };
+
+namespace {
+void audit_write(sqlite3* db, const char* username, int64_t user_id,
+                  const char* operation, ssm_status result) {
+    audit_log_write(db, user_id, username ? username : "",
+                    operation, ssm_status_to_string(result));
+}
+
+bool cache_lookup(ssm_handle* h, int64_t user_id, unsigned char* out) {
+    for (int i = 0; i < SSM_CACHE_MAX; ++i) {
+        if (h->cache[i].valid && h->cache[i].user_id == user_id) {
+            std::memcpy(out, h->cache[i].key, KEK_KEY_LEN);
+            h->cache[i].last_used = std::time(nullptr);
+            return true;
+        }
+    }
+    return false;
+}
+
+void cache_insert(ssm_handle* h, int64_t user_id, const unsigned char* key) {
+    int slot = -1;
+    time_t oldest = std::time(nullptr) + 1;
+    for (int i = 0; i < SSM_CACHE_MAX; ++i) {
+        if (!h->cache[i].valid) {
+            slot = i;
+            break;
+        }
+        if (h->cache[i].last_used < oldest) {
+            oldest = h->cache[i].last_used;
+            slot = i;
+        }
+    }
+    if (slot < 0) return;
+    std::memcpy(h->cache[slot].key, key, KEK_KEY_LEN);
+    h->cache[slot].user_id = user_id;
+    h->cache[slot].last_used = std::time(nullptr);
+    h->cache[slot].valid = true;
+}
+
+void cache_invalidate(ssm_handle* h, int64_t user_id) {
+    for (int i = 0; i < SSM_CACHE_MAX; ++i) {
+        if (h->cache[i].valid && h->cache[i].user_id == user_id) {
+            secure_erase(h->cache[i].key, KEK_KEY_LEN);
+            h->cache[i].valid = false;
+        }
+    }
+}
+}  // namespace
 
 const char* ssm_status_to_string(ssm_status status) {
     switch (status) {
@@ -66,6 +126,10 @@ ssm_status ssm_destroy(ssm_handle* h) {
 
     {
         std::unique_lock lock(h->mutex);
+        for (int i = 0; i < SSM_CACHE_MAX; ++i) {
+            if (h->cache[i].valid)
+                secure_erase(h->cache[i].key, KEK_KEY_LEN);
+        }
         db_close(h->db);
     }
     delete h;
@@ -79,8 +143,10 @@ ssm_status ssm_user_register(ssm_handle* h, const char* username, const char* pa
     std::unique_lock lock(h->mutex);
 
     user_row existing;
-    if (users_find_by_username(h->db, username, &existing))
+    if (users_find_by_username(h->db, username, &existing)) {
+        audit_write(h->db, username, 0, "user_register", SSM_ERR_AUTH);
         return SSM_ERR_AUTH;
+    }
 
     size_t pw_len = std::strlen(password);
     size_t hash_len = crypto_pwhash_STRBYTES;
@@ -107,6 +173,7 @@ ssm_status ssm_user_register(ssm_handle* h, const char* username, const char* pa
     if (!kek_store(h->db, user_id, wrapped, wrapped_len, salt, salt_len, expires_at))
         return SSM_ERR_INTERNAL;
 
+    audit_write(h->db, username, user_id, "user_register", SSM_OK);
     return SSM_OK;
 }
 
@@ -120,6 +187,7 @@ ssm_status ssm_user_authenticate(ssm_handle* h, const char* username, const char
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
         *is_valid = 0;
+        audit_write(h->db, username, 0, "user_authenticate", SSM_ERR_AUTH);
         return SSM_OK;
     }
 
@@ -129,6 +197,8 @@ ssm_status ssm_user_authenticate(ssm_handle* h, const char* username, const char
                     ? 1
                     : 0;
 
+    audit_write(h->db, username, user.id, "user_authenticate",
+                *is_valid ? SSM_OK : SSM_ERR_AUTH);
     return SSM_OK;
 }
 
@@ -141,22 +211,33 @@ ssm_status ssm_secret_store(ssm_handle* h, const char* username, const unsigned 
     std::unique_lock lock(h->mutex);
 
     user_row user;
-    if (!users_find_by_username(h->db, username, &user))
+    if (!users_find_by_username(h->db, username, &user)) {
+        audit_write(h->db, username, 0, "secret_store", SSM_ERR_AUTH);
         return SSM_ERR_AUTH;
+    }
 
     kek_row kek_meta;
     if (!kek_find_by_user(h->db, user.id, &kek_meta))
         return SSM_ERR_INTERNAL;
 
-    if (kek_is_expired(kek_meta.expires_at.c_str()))
+    if (kek_is_expired(kek_meta.expires_at.c_str())) {
+        audit_write(h->db, username, user.id, "secret_store", SSM_ERR_EXPIRED);
         return SSM_ERR_EXPIRED;
+    }
+
+    unsigned char wrapping_key[KEK_KEY_LEN];
+    if (!cache_lookup(h, user.id, wrapping_key)) {
+        if (!kek_derive_wrapping_key(user.password_hash.data(), user.password_hash.size(),
+                                     kek_meta.salt.data(), kek_meta.salt.size(),
+                                     wrapping_key, sizeof(wrapping_key)))
+            return SSM_ERR_INTERNAL;
+        cache_insert(h, user.id, wrapping_key);
+    }
 
     unsigned char kek_raw[KEK_KEY_LEN];
     size_t kek_len = sizeof(kek_raw);
-
-    if (!kek_unwrap(kek_meta.wrapped_kek.data(), kek_meta.wrapped_kek.size(),
-                    user.password_hash.data(), user.password_hash.size(), kek_meta.salt.data(),
-                    kek_meta.salt.size(), kek_raw, &kek_len))
+    if (!aes_kw_unwrap(kek_meta.wrapped_kek.data(), kek_meta.wrapped_kek.size(),
+                       wrapping_key, sizeof(wrapping_key), kek_raw, &kek_len))
         return SSM_ERR_INTERNAL;
 
     unsigned char nonce[AES_GCM_NONCE_LEN];
@@ -178,6 +259,7 @@ ssm_status ssm_secret_store(ssm_handle* h, const char* username, const unsigned 
                        public_key_len, nonce, sizeof(nonce), tag, sizeof(tag), description))
         return SSM_ERR_INTERNAL;
 
+    audit_write(h->db, username, user.id, "secret_store", SSM_OK);
     return SSM_OK;
 }
 
@@ -190,26 +272,37 @@ ssm_status ssm_secret_get(ssm_handle* h, const char* username, const char* name,
     std::unique_lock lock(h->mutex);
 
     user_row user;
-    if (!users_find_by_username(h->db, username, &user))
+    if (!users_find_by_username(h->db, username, &user)) {
+        audit_write(h->db, username, 0, "secret_get", SSM_ERR_AUTH);
         return SSM_ERR_AUTH;
+    }
 
     kek_row kek_meta;
     if (!kek_find_by_user(h->db, user.id, &kek_meta))
         return SSM_ERR_INTERNAL;
 
-    if (kek_is_expired(kek_meta.expires_at.c_str()))
+    if (kek_is_expired(kek_meta.expires_at.c_str())) {
+        audit_write(h->db, username, user.id, "secret_get", SSM_ERR_EXPIRED);
         return SSM_ERR_EXPIRED;
+    }
 
     secret_row secret;
     if (!secrets_find(h->db, user.id, name, &secret))
         return SSM_ERR_NOT_FOUND;
 
+    unsigned char wrapping_key[KEK_KEY_LEN];
+    if (!cache_lookup(h, user.id, wrapping_key)) {
+        if (!kek_derive_wrapping_key(user.password_hash.data(), user.password_hash.size(),
+                                     kek_meta.salt.data(), kek_meta.salt.size(),
+                                     wrapping_key, sizeof(wrapping_key)))
+            return SSM_ERR_INTERNAL;
+        cache_insert(h, user.id, wrapping_key);
+    }
+
     unsigned char kek_raw[KEK_KEY_LEN];
     size_t kek_len = sizeof(kek_raw);
-
-    if (!kek_unwrap(kek_meta.wrapped_kek.data(), kek_meta.wrapped_kek.size(),
-                    user.password_hash.data(), user.password_hash.size(), kek_meta.salt.data(),
-                    kek_meta.salt.size(), kek_raw, &kek_len))
+    if (!aes_kw_unwrap(kek_meta.wrapped_kek.data(), kek_meta.wrapped_kek.size(),
+                       wrapping_key, sizeof(wrapping_key), kek_raw, &kek_len))
         return SSM_ERR_INTERNAL;
 
     if (*private_key_len_out < secret.private_key.size()) {
@@ -225,8 +318,10 @@ ssm_status ssm_secret_get(ssm_handle* h, const char* username, const char* name,
 
     secure_erase(kek_raw, sizeof(kek_raw));
 
-    if (!dec_ok)
+    if (!dec_ok) {
+        audit_write(h->db, username, user.id, "secret_get", SSM_ERR_INTEGRITY);
         return SSM_ERR_INTEGRITY;
+    }
 
     std::memcpy(private_key_out, plaintext.data(), secret.private_key.size());
     *private_key_len_out = secret.private_key.size();
@@ -245,6 +340,7 @@ ssm_status ssm_secret_get(ssm_handle* h, const char* username, const char* name,
         }
     }
 
+    audit_write(h->db, username, user.id, "secret_get", SSM_OK);
     return SSM_OK;
 }
 
@@ -255,19 +351,24 @@ ssm_status ssm_secret_delete(ssm_handle* h, const char* username, const char* na
     std::unique_lock lock(h->mutex);
 
     user_row user;
-    if (!users_find_by_username(h->db, username, &user))
+    if (!users_find_by_username(h->db, username, &user)) {
+        audit_write(h->db, username, 0, "secret_delete", SSM_ERR_AUTH);
         return SSM_ERR_AUTH;
+    }
 
     kek_row kek_meta;
     if (!kek_find_by_user(h->db, user.id, &kek_meta))
         return SSM_ERR_INTERNAL;
 
-    if (kek_is_expired(kek_meta.expires_at.c_str()))
+    if (kek_is_expired(kek_meta.expires_at.c_str())) {
+        audit_write(h->db, username, user.id, "secret_delete", SSM_ERR_EXPIRED);
         return SSM_ERR_EXPIRED;
+    }
 
     if (!secrets_delete(h->db, user.id, name))
         return SSM_ERR_NOT_FOUND;
 
+    audit_write(h->db, username, user.id, "secret_delete", SSM_OK);
     return SSM_OK;
 }
 
@@ -279,15 +380,19 @@ ssm_status ssm_secret_list(ssm_handle* h, const char* username,
     std::unique_lock lock(h->mutex);
 
     user_row user;
-    if (!users_find_by_username(h->db, username, &user))
+    if (!users_find_by_username(h->db, username, &user)) {
+        audit_write(h->db, username, 0, "secret_list", SSM_ERR_AUTH);
         return SSM_ERR_AUTH;
+    }
 
     kek_row kek_meta;
     if (!kek_find_by_user(h->db, user.id, &kek_meta))
         return SSM_ERR_INTERNAL;
 
-    if (kek_is_expired(kek_meta.expires_at.c_str()))
+    if (kek_is_expired(kek_meta.expires_at.c_str())) {
+        audit_write(h->db, username, user.id, "secret_list", SSM_ERR_EXPIRED);
         return SSM_ERR_EXPIRED;
+    }
 
     std::vector<secret_row> secrets;
     if (!secrets_list_for_user(h->db, user.id, &secrets))
@@ -298,6 +403,7 @@ ssm_status ssm_secret_list(ssm_handle* h, const char* username,
                  s.public_key.size(), user_data);
     }
 
+    audit_write(h->db, username, user.id, "secret_list", SSM_OK);
     return SSM_OK;
 }
 
@@ -308,17 +414,22 @@ ssm_status ssm_user_delete(ssm_handle* h, const char* username, const char* pass
     std::unique_lock lock(h->mutex);
 
     user_row user;
-    if (!users_find_by_username(h->db, username, &user))
+    if (!users_find_by_username(h->db, username, &user)) {
+        audit_write(h->db, username, 0, "user_delete", SSM_ERR_AUTH);
         return SSM_ERR_AUTH;
+    }
 
     size_t pw_len = std::strlen(password);
     if (!argon2id_verify(reinterpret_cast<const unsigned char*>(password), pw_len,
-                         user.password_hash.data(), user.password_hash.size()))
+                         user.password_hash.data(), user.password_hash.size())) {
+        audit_write(h->db, username, user.id, "user_delete", SSM_ERR_AUTH);
         return SSM_ERR_AUTH;
+    }
 
     if (!users_delete(h->db, user.id))
         return SSM_ERR_INTERNAL;
 
+    audit_write(h->db, username, user.id, "user_delete", SSM_OK);
     return SSM_OK;
 }
 
@@ -332,13 +443,17 @@ ssm_status ssm_user_change_password(ssm_handle* h, const char* username,
     std::unique_lock lock(h->mutex);
 
     user_row user;
-    if (!users_find_by_username(h->db, username, &user))
+    if (!users_find_by_username(h->db, username, &user)) {
+        audit_write(h->db, username, 0, "user_change_password", SSM_ERR_AUTH);
         return SSM_ERR_AUTH;
+    }
 
     size_t old_len = std::strlen(old_password);
     if (!argon2id_verify(reinterpret_cast<const unsigned char*>(old_password), old_len,
-                         user.password_hash.data(), user.password_hash.size()))
+                         user.password_hash.data(), user.password_hash.size())) {
+        audit_write(h->db, username, user.id, "user_change_password", SSM_ERR_AUTH);
         return SSM_ERR_AUTH;
+    }
 
     // hash new password
     size_t new_hash_len = crypto_pwhash_STRBYTES;
@@ -419,12 +534,18 @@ ssm_status ssm_user_change_password(ssm_handle* h, const char* username,
         ok = true;
     } while (false);
 
-    if (ok)
+    ssm_status result;
+    if (ok) {
         sqlite3_exec(h->db, "COMMIT", nullptr, nullptr, nullptr);
-    else
+        cache_invalidate(h, user.id);
+        result = SSM_OK;
+    } else {
         sqlite3_exec(h->db, "ROLLBACK", nullptr, nullptr, nullptr);
+        result = SSM_ERR_INTERNAL;
+    }
 
-    return ok ? SSM_OK : SSM_ERR_INTERNAL;
+    audit_write(h->db, username, user.id, "user_change_password", result);
+    return result;
 }
 
 ssm_status ssm_kek_rotate(ssm_handle* h, const char* username) {
@@ -434,11 +555,17 @@ ssm_status ssm_kek_rotate(ssm_handle* h, const char* username) {
     std::unique_lock lock(h->mutex);
 
     user_row user;
-    if (!users_find_by_username(h->db, username, &user))
+    if (!users_find_by_username(h->db, username, &user)) {
+        audit_write(h->db, username, 0, "kek_rotate", SSM_ERR_AUTH);
         return SSM_ERR_AUTH;
+    }
 
-    if (!kek_rotate(h->db, user.id, user.password_hash.data(), user.password_hash.size()))
+    if (!kek_rotate(h->db, user.id, user.password_hash.data(), user.password_hash.size())) {
+        audit_write(h->db, username, user.id, "kek_rotate", SSM_ERR_INTERNAL);
         return SSM_ERR_INTERNAL;
+    }
 
+    cache_invalidate(h, user.id);
+    audit_write(h->db, username, user.id, "kek_rotate", SSM_OK);
     return SSM_OK;
 }

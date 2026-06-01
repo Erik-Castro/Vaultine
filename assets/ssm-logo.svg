@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1b2a"/>
+      <stop offset="100%" stop-color="#1b2838"/>
+    </linearGradient>
+    <linearGradient id="hex" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1565c0"/>
+      <stop offset="100%" stop-color="#0d47a1"/>
+    </linearGradient>
+    <linearGradient id="hex-glow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#42a5f5"/>
+      <stop offset="100%" stop-color="#1565c0"/>
+    </linearGradient>
+    <linearGradient id="key" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffd54f"/>
+      <stop offset="100%" stop-color="#ff8f00"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="200" cy="200" r="190" fill="url(#bg)" stroke="#2a3a4a" stroke-width="2"/>
+
+  <!-- Hexagonal shield -->
+  <polygon points="200,60 310,115 310,230 200,285 90,230 90,115"
+           fill="url(#hex)" stroke="url(#hex-glow)" stroke-width="3" filter="url(#shadow)"/>
+
+  <!-- Inner hexagon (border detail) -->
+  <polygon points="200,78 295,125 295,218 200,265 105,218 105,125"
+           fill="none" stroke="#42a5f5" stroke-width="0.8" opacity="0.4"/>
+
+  <!-- Key symbol -->
+  <g transform="translate(200,178)" filter="url(#glow)">
+    <!-- Key bow (circle with hole) -->
+    <circle cx="0" cy="-45" r="20" fill="none" stroke="url(#key)" stroke-width="4"/>
+    <circle cx="0" cy="-45" r="8" fill="url(#bg)" stroke="url(#key)" stroke-width="2"/>
+    <!-- Key shaft -->
+    <line x1="0" y1="-25" x2="0" y2="35" stroke="url(#key)" stroke-width="5" stroke-linecap="round"/>
+    <!-- Key teeth -->
+    <line x1="0" y1="20" x2="18" y2="20" stroke="url(#key)" stroke-width="4" stroke-linecap="round"/>
+    <line x1="0" y1="30" x2="14" y2="30" stroke="url(#key)" stroke-width="4" stroke-linecap="round"/>
+    <!-- Chevron on shaft -->
+    <polyline points="10,-15 0,-5 -10,-15" fill="none" stroke="url(#key)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Lock icon (bottom of shield) -->
+  <g transform="translate(200,240)" opacity="0.3">
+    <rect x="-8" y="-2" width="16" height="14" rx="2" fill="none" stroke="#90caf9" stroke-width="1.5"/>
+    <path d="M-5,-2 L-5,-6 A5,5 0 0,1 5,-6 L5,-2" fill="none" stroke="#90caf9" stroke-width="1.5"/>
+  </g>
+
+  <!-- SSM text -->
+  <text x="200" y="330" text-anchor="middle" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif"
+        font-size="52" font-weight="700" fill="#e3f2fd" letter-spacing="6">
+    SSM
+  </text>
+
+  <!-- Subtitle -->
+  <text x="200" y="358" text-anchor="middle" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif"
+        font-size="12" font-weight="400" fill="#90caf9" letter-spacing="3" text-transform="uppercase">
+    SOFTWARE SECURITY MODULE
+  </text>
+</svg>

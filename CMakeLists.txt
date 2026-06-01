@@ -29,6 +29,7 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_subdirectory(src)
+add_subdirectory(cli)
 
 option(SSM_BUILD_TESTS "Build tests" ON)
 if(SSM_BUILD_TESTS)
