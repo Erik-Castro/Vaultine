@@ -81,6 +81,7 @@ bool db_create_schema(sqlite3* db) {
         "  wrapped_kek BLOB NOT NULL,"
         "  salt BLOB NOT NULL,"
         "  expires_at TEXT NOT NULL,"
+        "  kek_version INTEGER NOT NULL DEFAULT 1,"
         "  UNIQUE(user_id)"
         ");"
 

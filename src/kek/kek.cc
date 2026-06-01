@@ -248,9 +248,9 @@ bool kek_rotate(sqlite3* db, int64_t user_id, const unsigned char* auth_hash,
         if (!rotation_ok)
             break;
 
-        // --- update kek_metadata ---
+        // --- update kek_metadata (increment kek_version) ---
         if (!kek_update(db, user_id, new_wrapped, new_wrapped_len, new_salt, sizeof(new_salt),
-                        new_expires))
+                        new_expires, old_kek.kek_version))
             break;
 
         ok = true;

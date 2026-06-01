@@ -33,6 +33,12 @@ SSM_EXPORT ssm_status ssm_user_register(ssm_handle* h, const char* username, con
 SSM_EXPORT ssm_status ssm_user_authenticate(ssm_handle* h, const char* username,
                                             const char* password, int* is_valid);
 
+SSM_EXPORT ssm_status ssm_user_delete(ssm_handle* h, const char* username, const char* password);
+
+SSM_EXPORT ssm_status ssm_user_change_password(ssm_handle* h, const char* username,
+                                                const char* old_password,
+                                                const char* new_password);
+
 SSM_EXPORT ssm_status ssm_secret_store(ssm_handle* h, const char* username,
                                        const unsigned char* private_key, size_t private_key_len,
                                        const unsigned char* public_key, size_t public_key_len,
@@ -43,6 +49,13 @@ SSM_EXPORT ssm_status ssm_secret_get(ssm_handle* h, const char* username, const 
                                      unsigned char* public_key_out, size_t* public_key_len_out);
 
 SSM_EXPORT ssm_status ssm_secret_delete(ssm_handle* h, const char* username, const char* name);
+
+typedef void (*ssm_secret_list_cb)(const char* name, const char* description,
+                                    const char* updated_at, size_t public_key_len,
+                                    void* user_data);
+
+SSM_EXPORT ssm_status ssm_secret_list(ssm_handle* h, const char* username,
+                                       ssm_secret_list_cb callback, void* user_data);
 
 SSM_EXPORT ssm_status ssm_kek_rotate(ssm_handle* h, const char* username);
 

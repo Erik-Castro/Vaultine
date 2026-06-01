@@ -64,13 +64,29 @@ TEST_F(KekTest, UpdateKek) {
     const unsigned char new_salt[] = "new-salt-16!!";
 
     EXPECT_TRUE(kek_update(db_, user_id_, new_kek, sizeof(new_kek), new_salt, sizeof(new_salt),
-                           "2099-01-01T00:00:00Z"));
+                           "2099-01-01T00:00:00Z", 1));
 
     kek_row row{};
     ASSERT_TRUE(kek_find_by_user(db_, user_id_, &row));
     EXPECT_EQ(row.wrapped_kek.size(), sizeof(new_kek));
     EXPECT_EQ(row.salt.size(), sizeof(new_salt));
     EXPECT_EQ(row.expires_at, "2099-01-01T00:00:00Z");
+    EXPECT_EQ(row.kek_version, 2);  // version incremented
+}
+
+TEST_F(KekTest, UpdateKekWithWrongVersionFails) {
+    ASSERT_TRUE(kek_store(db_, user_id_, WRAPPED_KEK, sizeof(WRAPPED_KEK), SALT, sizeof(SALT),
+                          "2099-12-31T23:59:59Z"));
+
+    const unsigned char new_kek[] = "new-wrapped-kek-32-bytes!!!!!!!!";
+    const unsigned char new_salt[] = "new-salt-16!!";
+
+    EXPECT_FALSE(kek_update(db_, user_id_, new_kek, sizeof(new_kek), new_salt, sizeof(new_salt),
+                            "2099-01-01T00:00:00Z", 99));
+
+    kek_row row{};
+    ASSERT_TRUE(kek_find_by_user(db_, user_id_, &row));
+    EXPECT_EQ(row.kek_version, 1);  // unchanged
 }
 
 TEST_F(KekTest, DeleteKek) {

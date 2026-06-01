@@ -47,7 +47,7 @@ bool kek_find_by_user(sqlite3* db, int64_t user_id, kek_row* out) {
         return false;
 
     const char* sql =
-        "SELECT id, user_id, wrapped_kek, salt, expires_at "
+        "SELECT id, user_id, wrapped_kek, salt, expires_at, kek_version "
         "FROM kek_metadata WHERE user_id = ?";
 
     sqlite3_stmt* stmt = nullptr;
@@ -76,6 +76,8 @@ bool kek_find_by_user(sqlite3* db, int64_t user_id, kek_row* out) {
         auto* ea = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
         out->expires_at.assign(ea);
 
+        out->kek_version = sqlite3_column_int64(stmt, 5);
+
         ok = true;
     } while (false);
 
@@ -85,13 +87,16 @@ bool kek_find_by_user(sqlite3* db, int64_t user_id, kek_row* out) {
 
 bool kek_update(sqlite3* db, int64_t user_id, const unsigned char* wrapped_kek,
                 size_t wrapped_kek_len, const unsigned char* salt, size_t salt_len,
-                const char* expires_at) {
+                const char* expires_at, int64_t expected_version) {
     if (!db || !wrapped_kek || !salt || !expires_at)
+        return false;
+    if (expected_version < 1)
         return false;
 
     const char* sql =
-        "UPDATE kek_metadata SET wrapped_kek = ?, salt = ?, expires_at = ? "
-        "WHERE user_id = ?";
+        "UPDATE kek_metadata SET wrapped_kek = ?, salt = ?, expires_at = ?, "
+        "kek_version = kek_version + 1 "
+        "WHERE user_id = ? AND kek_version = ?";
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK)
@@ -101,7 +106,7 @@ bool kek_update(sqlite3* db, int64_t user_id, const unsigned char* wrapped_kek,
 
     do {
         if (sqlite3_bind_blob(stmt, 1, wrapped_kek, static_cast<int>(wrapped_kek_len),
-                              SQLITE_TRANSIENT) != SQLITE_OK)
+                               SQLITE_TRANSIENT) != SQLITE_OK)
             break;
 
         if (sqlite3_bind_blob(stmt, 2, salt, static_cast<int>(salt_len), SQLITE_TRANSIENT) !=
@@ -112,8 +117,12 @@ bool kek_update(sqlite3* db, int64_t user_id, const unsigned char* wrapped_kek,
             break;
 
         sqlite3_bind_int64(stmt, 4, user_id);
+        sqlite3_bind_int64(stmt, 5, expected_version);
 
         if (sqlite3_step(stmt) != SQLITE_DONE)
+            break;
+
+        if (sqlite3_changes(db) == 0)
             break;
 
         ok = true;

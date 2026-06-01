@@ -15,6 +15,7 @@ struct kek_row {
     std::vector<unsigned char> wrapped_kek;
     std::vector<unsigned char> salt;
     std::string expires_at;
+    int64_t kek_version = 1;
 };
 
 bool kek_store(sqlite3* db, int64_t user_id, const unsigned char* wrapped_kek,
@@ -25,7 +26,7 @@ bool kek_find_by_user(sqlite3* db, int64_t user_id, kek_row* out);
 
 bool kek_update(sqlite3* db, int64_t user_id, const unsigned char* wrapped_kek,
                 size_t wrapped_kek_len, const unsigned char* salt, size_t salt_len,
-                const char* expires_at);
+                const char* expires_at, int64_t expected_version);
 
 bool kek_delete(sqlite3* db, int64_t user_id);
 
