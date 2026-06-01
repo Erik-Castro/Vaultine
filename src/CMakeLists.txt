@@ -9,6 +9,7 @@ add_library(ssm SHARED
     db/users.cc
     db/kek_metadata.cc
     db/secrets.cc
+    kek/kek.cc
 )
 
 target_include_directories(ssm

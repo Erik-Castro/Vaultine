@@ -38,7 +38,7 @@ bool db_open(const char* path,
              const unsigned char* key, size_t key_len,
              sqlite3** out)
 {
-    if (!path || !key || !out)
+    if (!path || !out)
         return false;
 
     int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX;
@@ -48,6 +48,12 @@ bool db_open(const char* path,
 
     if (sqlcipher_is_present(*out))
     {
+        if (!key || key_len == 0)
+        {
+            sqlite3_close(*out);
+            *out = nullptr;
+            return false;
+        }
         if (!set_key_via_pragma(*out, key, key_len))
         {
             sqlite3_close(*out);
