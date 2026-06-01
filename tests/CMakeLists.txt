@@ -10,6 +10,7 @@ add_executable(ssm_test
     db/kek_metadata_test.cc
     db/secrets_test.cc
     kek/kek_test.cc
+    ssm_test.cc
 )
 
 target_include_directories(ssm_test
