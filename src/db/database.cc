@@ -102,6 +102,8 @@ bool db_create_schema(sqlite3* db) {
         "  user_id INTEGER,"
         "  username TEXT NOT NULL,"
         "  operation TEXT NOT NULL,"
+        "  operation_target TEXT,"
+        "  details TEXT,"
         "  result TEXT NOT NULL,"
         "  timestamp TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))"
         ");";

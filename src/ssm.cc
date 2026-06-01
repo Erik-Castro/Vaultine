@@ -34,13 +34,32 @@ struct ssm_handle {
     sqlite3* db;
     std::shared_mutex mutex;
     cache_entry cache[SSM_CACHE_MAX];
+    size_t cache_hits = 0;
+    size_t cache_misses = 0;
 };
 
 namespace {
+
+// Default password validator: minimum 4 characters.
+ssm_status default_password_validator(const char* password, void* /*user_data*/) {
+    if (!password)
+        return SSM_ERR_INTERNAL;
+    size_t len = std::strlen(password);
+    if (len < 4)
+        return SSM_ERR_INTERNAL;
+    return SSM_OK;
+}
+
+ssm_password_validator g_validator = default_password_validator;
+void* g_validator_user_data = nullptr;
+
 void audit_write(sqlite3* db, const char* username, int64_t user_id,
-                  const char* operation, ssm_status result) {
+                  const char* operation, ssm_status result,
+                  const char* operation_target = nullptr,
+                  const char* details = nullptr) {
     audit_log_write(db, user_id, username ? username : "",
-                    operation, ssm_status_to_string(result));
+                    operation, ssm_status_to_string(result),
+                    operation_target, details);
 }
 
 bool cache_lookup(ssm_handle* h, int64_t user_id, unsigned char* out) {
@@ -48,9 +67,11 @@ bool cache_lookup(ssm_handle* h, int64_t user_id, unsigned char* out) {
         if (h->cache[i].valid && h->cache[i].user_id == user_id) {
             std::memcpy(out, h->cache[i].key, KEK_KEY_LEN);
             h->cache[i].last_used = std::time(nullptr);
+            ++h->cache_hits;
             return true;
         }
     }
+    ++h->cache_misses;
     return false;
 }
 
@@ -96,6 +117,20 @@ const char* ssm_status_to_string(ssm_status status) {
     }
 }
 
+ssm_status ssm_cache_get_stats(ssm_handle* h, ssm_cache_stats* out) {
+    if (!h || !out)
+        return SSM_ERR_INTERNAL;
+    std::shared_lock lock(h->mutex);
+    out->total_entries = SSM_CACHE_MAX;
+    out->valid_entries = 0;
+    for (size_t i = 0; i < SSM_CACHE_MAX; ++i)
+        if (h->cache[i].valid)
+            ++out->valid_entries;
+    out->hit_count = h->cache_hits;
+    out->miss_count = h->cache_misses;
+    return SSM_OK;
+}
+
 ssm_status ssm_init(ssm_handle** out, const char* db_path, const unsigned char* db_key,
                     size_t db_key_len) {
     if (!out)
@@ -136,9 +171,18 @@ ssm_status ssm_destroy(ssm_handle* h) {
     return SSM_OK;
 }
 
+void ssm_set_password_validator(ssm_password_validator validator, void* user_data) {
+    g_validator = validator ? validator : default_password_validator;
+    g_validator_user_data = validator ? user_data : nullptr;
+}
+
 ssm_status ssm_user_register(ssm_handle* h, const char* username, const char* password) {
     if (!h || !username || !password)
         return SSM_ERR_INTERNAL;
+
+    ssm_status pw_status = g_validator(password, g_validator_user_data);
+    if (pw_status != SSM_OK)
+        return pw_status;
 
     std::unique_lock lock(h->mutex);
 
@@ -259,7 +303,7 @@ ssm_status ssm_secret_store(ssm_handle* h, const char* username, const unsigned 
                        public_key_len, nonce, sizeof(nonce), tag, sizeof(tag), description))
         return SSM_ERR_INTERNAL;
 
-    audit_write(h->db, username, user.id, "secret_store", SSM_OK);
+    audit_write(h->db, username, user.id, "secret_store", SSM_OK, name);
     return SSM_OK;
 }
 
@@ -340,7 +384,7 @@ ssm_status ssm_secret_get(ssm_handle* h, const char* username, const char* name,
         }
     }
 
-    audit_write(h->db, username, user.id, "secret_get", SSM_OK);
+    audit_write(h->db, username, user.id, "secret_get", SSM_OK, name);
     return SSM_OK;
 }
 
@@ -368,7 +412,7 @@ ssm_status ssm_secret_delete(ssm_handle* h, const char* username, const char* na
     if (!secrets_delete(h->db, user.id, name))
         return SSM_ERR_NOT_FOUND;
 
-    audit_write(h->db, username, user.id, "secret_delete", SSM_OK);
+    audit_write(h->db, username, user.id, "secret_delete", SSM_OK, name);
     return SSM_OK;
 }
 
@@ -437,8 +481,10 @@ ssm_status ssm_user_change_password(ssm_handle* h, const char* username,
                                      const char* old_password, const char* new_password) {
     if (!h || !username || !old_password || !new_password)
         return SSM_ERR_INTERNAL;
-    if (std::strlen(new_password) == 0)
-        return SSM_ERR_INTERNAL;
+
+    ssm_status pw_status = g_validator(new_password, g_validator_user_data);
+    if (pw_status != SSM_OK)
+        return pw_status;
 
     std::unique_lock lock(h->mutex);
 
@@ -566,6 +612,6 @@ ssm_status ssm_kek_rotate(ssm_handle* h, const char* username) {
     }
 
     cache_invalidate(h, user.id);
-    audit_write(h->db, username, user.id, "kek_rotate", SSM_OK);
+    audit_write(h->db, username, user.id, "kek_rotate", SSM_OK, username);
     return SSM_OK;
 }

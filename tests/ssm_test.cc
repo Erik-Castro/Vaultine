@@ -2,8 +2,10 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <thread>
 #include <vector>
 
 #include "db/database.h"
@@ -93,7 +95,7 @@ TEST_F(SsmApiTest, StoreAndGetSecretWithPublicKey) {
 }
 
 TEST_F(SsmApiTest, GetNonExistentSecret) {
-    ASSERT_EQ(ssm_user_register(handle_, "frank", "x"), SSM_OK);
+    ASSERT_EQ(ssm_user_register(handle_, "frank", "pass1234"), SSM_OK);
 
     unsigned char out[8] = {};
     size_t len = sizeof(out);
@@ -102,7 +104,7 @@ TEST_F(SsmApiTest, GetNonExistentSecret) {
 }
 
 TEST_F(SsmApiTest, DeleteSecret) {
-    ASSERT_EQ(ssm_user_register(handle_, "grace", "x"), SSM_OK);
+    ASSERT_EQ(ssm_user_register(handle_, "grace", "pass1234"), SSM_OK);
 
     const unsigned char priv[] = "delete-me-key";
     ASSERT_EQ(
@@ -118,7 +120,7 @@ TEST_F(SsmApiTest, DeleteSecret) {
 }
 
 TEST_F(SsmApiTest, DeleteNonExistentSecret) {
-    ASSERT_EQ(ssm_user_register(handle_, "hank", "x"), SSM_OK);
+    ASSERT_EQ(ssm_user_register(handle_, "hank", "pass1234"), SSM_OK);
     EXPECT_EQ(ssm_secret_delete(handle_, "hank", "ghost"), SSM_ERR_NOT_FOUND);
 }
 
@@ -141,7 +143,7 @@ protected:
 };
 
 TEST_F(SsmApiFileTest, DeleteSecretWithExpiredKek) {
-    ASSERT_EQ(ssm_user_register(handle_, "iris", "pw"), SSM_OK);
+    ASSERT_EQ(ssm_user_register(handle_, "iris", "pass1234"), SSM_OK);
 
     const unsigned char priv[] = "expired-kek-test";
     ASSERT_EQ(
@@ -186,7 +188,7 @@ TEST_F(SsmApiTest, RotateAndSecretsStillAccessible) {
 }
 
 TEST_F(SsmApiTest, RotateMultipleSecrets) {
-    ASSERT_EQ(ssm_user_register(handle_, "jack", "pw"), SSM_OK);
+    ASSERT_EQ(ssm_user_register(handle_, "jack", "pass1234"), SSM_OK);
 
     for (int i = 0; i < 5; ++i) {
         unsigned char priv[16];
@@ -286,7 +288,7 @@ TEST_F(SsmApiTest, ChangePasswordAndAccessSecrets) {
 
 TEST_F(SsmApiTest, ChangePasswordWrongOldPassword) {
     ASSERT_EQ(ssm_user_register(handle_, "una", "realpw"), SSM_OK);
-    EXPECT_EQ(ssm_user_change_password(handle_, "una", "wrong", "new"), SSM_ERR_AUTH);
+    EXPECT_EQ(ssm_user_change_password(handle_, "una", "wrong", "new!"), SSM_ERR_AUTH);
 
     int valid = 0;
     EXPECT_EQ(ssm_user_authenticate(handle_, "una", "realpw", &valid), SSM_OK);
@@ -294,8 +296,8 @@ TEST_F(SsmApiTest, ChangePasswordWrongOldPassword) {
 }
 
 TEST_F(SsmApiTest, ChangePasswordEmptyPassword) {
-    ASSERT_EQ(ssm_user_register(handle_, "trent", "pw"), SSM_OK);
-    EXPECT_EQ(ssm_user_change_password(handle_, "trent", "pw", ""), SSM_ERR_INTERNAL);
+    ASSERT_EQ(ssm_user_register(handle_, "trent", "pass1234"), SSM_OK);
+    EXPECT_EQ(ssm_user_change_password(handle_, "trent", "pass1234", ""), SSM_ERR_INTERNAL);
 }
 
 namespace {
@@ -316,7 +318,7 @@ void collect_names(const char* name, const char* desc, const char* updated_at,
 }
 
 TEST_F(SsmApiTest, ListSecrets) {
-    ASSERT_EQ(ssm_user_register(handle_, "xavier", "pw"), SSM_OK);
+    ASSERT_EQ(ssm_user_register(handle_, "xavier", "pass1234"), SSM_OK);
 
     const unsigned char priv[] = "key-material-here-32bytes!";
     const unsigned char pub[] = "pub-key-here!";
@@ -342,10 +344,10 @@ TEST_F(SsmApiTest, ListSecrets) {
 }
 
 TEST_F(SsmApiTest, ListSecretsWithExpiredKek) {
-    ASSERT_EQ(ssm_user_register(handle_, "walter", "pw"), SSM_OK);
+    ASSERT_EQ(ssm_user_register(handle_, "walter", "pass1234"), SSM_OK);
     const unsigned char priv[] = "some-key";
     ASSERT_EQ(ssm_secret_store(handle_, "walter", priv, sizeof(priv), nullptr, 0,
-                               "k", nullptr), SSM_OK);
+                                "k", nullptr), SSM_OK);
 
     // destroy and re-open to test with a file DB for expired KEK manipulation
     ssm_destroy(handle_);
@@ -354,7 +356,7 @@ TEST_F(SsmApiTest, ListSecretsWithExpiredKek) {
     const char* path = "/data/data/com.termux/files/usr/tmp/opencode/ssm_list_expired.db";
     ::remove(path);
     ASSERT_EQ(ssm_init(&handle_, path, nullptr, 0), SSM_OK);
-    ASSERT_EQ(ssm_user_register(handle_, "walter", "pw"), SSM_OK);
+    ASSERT_EQ(ssm_user_register(handle_, "walter", "pass1234"), SSM_OK);
     ASSERT_EQ(ssm_secret_store(handle_, "walter", priv, sizeof(priv), nullptr, 0,
                                "k", nullptr), SSM_OK);
     ssm_destroy(handle_);
@@ -405,6 +407,169 @@ TEST_F(SsmApiTest, StatusToString) {
     EXPECT_STREQ(ssm_status_to_string(SSM_ERR_INTEGRITY), "SSM_ERR_INTEGRITY");
     EXPECT_STREQ(ssm_status_to_string(SSM_ERR_INTERNAL), "SSM_ERR_INTERNAL");
     EXPECT_STREQ(ssm_status_to_string(static_cast<ssm_status>(99)), "SSM_ERR_UNKNOWN");
+}
+
+// ── Tag corruption (integrity validation) ──────────────────────────────
+
+class SsmApiCorruptionTest : public ::testing::Test {
+protected:
+    ssm_handle* handle_ = nullptr;
+    const char* path_ = "/data/data/com.termux/files/usr/tmp/opencode/ssm_integrity.db";
+
+    void SetUp() override {
+        ::remove(path_);
+        ASSERT_EQ(ssm_init(&handle_, path_, nullptr, 0), SSM_OK);
+        ASSERT_NE(handle_, nullptr);
+        ASSERT_EQ(ssm_user_register(handle_, "alice", "strongP@ss1"), SSM_OK);
+        const unsigned char priv[] = "sensitive-key-data-0000000000";
+        ASSERT_EQ(ssm_secret_store(handle_, "alice", priv, sizeof(priv), nullptr, 0,
+                                   "mykey", nullptr), SSM_OK);
+    }
+
+    void TearDown() override {
+        if (handle_)
+            ssm_destroy(handle_);
+        ::remove(path_);
+    }
+};
+
+TEST_F(SsmApiCorruptionTest, CorruptedTagReturnsIntegrityError) {
+    // Tamper with the GCM auth tag directly in the database
+    sqlite3* raw = nullptr;
+    ASSERT_TRUE(db_open(path_, nullptr, 0, &raw));
+    sqlite3_exec(raw,
+        "UPDATE secrets SET tag = X'00000000000000000000000000000000' "
+        "WHERE name = 'mykey'",
+        nullptr, nullptr, nullptr);
+    db_close(raw);
+
+    // Re-open
+    ssm_destroy(handle_);
+    handle_ = nullptr;
+    ASSERT_EQ(ssm_init(&handle_, path_, nullptr, 0), SSM_OK);
+
+    unsigned char out[64] = {};
+    size_t len = sizeof(out);
+    EXPECT_EQ(ssm_secret_get(handle_, "alice", "mykey", out, &len, nullptr, nullptr),
+              SSM_ERR_INTEGRITY);
+}
+
+// ── Password validation ────────────────────────────────────────────────
+
+TEST_F(SsmApiTest, DefaultValidatorRejectsShortPassword) {
+    EXPECT_EQ(ssm_user_register(handle_, "shorty", "abc"), SSM_ERR_INTERNAL);
+}
+
+TEST_F(SsmApiTest, CustomValidator) {
+    auto custom_check = [](const char* pw, void*) -> ssm_status {
+        return std::strchr(pw, '!') ? SSM_OK : SSM_ERR_INTERNAL;
+    };
+    ssm_set_password_validator(custom_check, nullptr);
+
+    EXPECT_EQ(ssm_user_register(handle_, "custom", "no-exclamation"), SSM_ERR_INTERNAL);
+    EXPECT_EQ(ssm_user_register(handle_, "custom2", "has-exclamation!"), SSM_OK);
+
+    // Restore default
+    ssm_set_password_validator(nullptr, nullptr);
+
+    int valid = 0;
+    EXPECT_EQ(ssm_user_authenticate(handle_, "custom2", "has-exclamation!", &valid), SSM_OK);
+    EXPECT_EQ(valid, 1);
+}
+
+TEST_F(SsmApiTest, ValidatorBlocksChangePassword) {
+    ASSERT_EQ(ssm_user_register(handle_, "changeme", "longenoughpw"), SSM_OK);
+
+    EXPECT_EQ(ssm_user_change_password(handle_, "changeme", "longenoughpw", "ab"),
+              SSM_ERR_INTERNAL);
+}
+
+// ── Cache statistics ──────────────────────────────────────────────────
+
+TEST_F(SsmApiTest, CacheStatsAfterOperations) {
+    ASSERT_EQ(ssm_user_register(handle_, "alice", "password123"), SSM_OK);
+
+    ssm_cache_stats stats{};
+    EXPECT_EQ(ssm_cache_get_stats(handle_, &stats), SSM_OK);
+    EXPECT_EQ(stats.total_entries, 256);
+    EXPECT_GE(stats.miss_count, 0);
+    EXPECT_GE(stats.hit_count, 0);
+
+    // Store -> cache miss
+    const unsigned char priv[] = "my-key-data-here-32bytes!";
+    ASSERT_EQ(ssm_secret_store(handle_, "alice", priv, sizeof(priv), nullptr, 0,
+                               "k", nullptr), SSM_OK);
+
+    ssm_cache_stats after_store{};
+    EXPECT_EQ(ssm_cache_get_stats(handle_, &after_store), SSM_OK);
+    EXPECT_GT(after_store.miss_count, 0);
+
+    // Get -> cache hit
+    unsigned char out[64] = {};
+    size_t len = sizeof(out);
+    ASSERT_EQ(ssm_secret_get(handle_, "alice", "k", out, &len, nullptr, nullptr), SSM_OK);
+
+    EXPECT_EQ(ssm_cache_get_stats(handle_, &stats), SSM_OK);
+    EXPECT_GT(stats.miss_count, 0);
+    EXPECT_GT(stats.hit_count, 0);
+}
+
+// ── Concurrency ───────────────────────────────────────────────────────
+
+TEST_F(SsmApiTest, ConcurrentOperations) {
+    ASSERT_EQ(ssm_user_register(handle_, "alice", "pass1234"), SSM_OK);
+
+    constexpr int N = 10;
+    std::atomic<int> ok_count{0};
+
+    std::vector<std::thread> threads;
+    for (int i = 0; i < N; ++i) {
+        threads.emplace_back([this, i, &ok_count]() {
+            char name[16];
+            std::snprintf(name, sizeof(name), "key%d", i);
+            unsigned char priv[16];
+            std::memset(priv, 'A' + i, sizeof(priv));
+
+            if (ssm_secret_store(handle_, "alice", priv, sizeof(priv), nullptr, 0,
+                                 name, nullptr) == SSM_OK)
+                ++ok_count;
+        });
+    }
+    for (auto& t : threads)
+        t.join();
+
+    EXPECT_EQ(ok_count.load(), N);
+
+    // retrieve all
+    for (int i = 0; i < N; ++i) {
+        char name[16];
+        std::snprintf(name, sizeof(name), "key%d", i);
+        unsigned char expected[16];
+        std::memset(expected, 'A' + i, sizeof(expected));
+        unsigned char out[16] = {};
+        size_t len = sizeof(out);
+        EXPECT_EQ(ssm_secret_get(handle_, "alice", name, out, &len, nullptr, nullptr), SSM_OK);
+        EXPECT_EQ(std::memcmp(out, expected, sizeof(expected)), 0);
+    }
+}
+
+TEST_F(SsmApiTest, ConcurrentPasswordChanges) {
+    ASSERT_EQ(ssm_user_register(handle_, "bob", "origpass1"), SSM_OK);
+
+    const unsigned char priv[] = "concurrent-access-key!";
+    ASSERT_EQ(ssm_secret_store(handle_, "bob", priv, sizeof(priv), nullptr, 0,
+                               "secret", nullptr), SSM_OK);
+
+    std::vector<std::thread> threads;
+    for (int i = 0; i < 3; ++i) {
+        threads.emplace_back([this, i]() {
+            char new_pw[32];
+            std::snprintf(new_pw, sizeof(new_pw), "newpass%d_xxxxxxxxxx", i);
+            ssm_user_change_password(handle_, "bob", "origpass1", new_pw);
+        });
+    }
+    for (auto& t : threads)
+        t.join();
 }
 
 }  // namespace

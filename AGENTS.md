@@ -49,6 +49,18 @@
 | `salt` | BLOB | NOT NULL |
 | `expires_at` | TEXT | NOT NULL (UTC, default +90d) |
 
+### `audit_log`
+| Coluna | Tipo | Restrição |
+|--------|------|-----------|
+| `id` | INTEGER | PK AUTOINCREMENT |
+| `user_id` | INTEGER | NULLABLE |
+| `username` | TEXT | NOT NULL |
+| `operation` | TEXT | NOT NULL |
+| `operation_target` | TEXT | NULLABLE (ex: nome do secret) |
+| `details` | TEXT | NULLABLE (ex: motivo do erro) |
+| `result` | TEXT | NOT NULL |
+| `timestamp` | TEXT | NOT NULL DEFAULT CURRENT_TIMESTAMP |
+
 ### `secrets`
 | Coluna | Tipo | Restrição |
 |--------|------|-----------|
@@ -61,6 +73,47 @@
 | `tag` | BLOB | NOT NULL (16B GCM auth tag) |
 | `description` | TEXT | NULLABLE |
 | `updated_at` | TEXT | NOT NULL DEFAULT CURRENT_TIMESTAMP |
+
+## API Pública — Novas Features (v0.2)
+
+### Validação de Senha
+```c
+typedef ssm_status (*ssm_password_validator)(const char* password, void* user_data);
+void ssm_set_password_validator(ssm_password_validator validator, void* user_data);
+```
+- Default: mínimo 4 caracteres
+- `NULL` restaura o validador default
+- Chamado em `ssm_user_register` e `ssm_user_change_password`
+
+### Cache Statistics
+```c
+typedef struct {
+    size_t total_entries;   // SSM_CACHE_MAX = 256
+    size_t valid_entries;   // entradas atualmente válidas
+    size_t hit_count;       // acertos cumulativos
+    size_t miss_count;      // erros cumulativos
+} ssm_cache_stats;
+
+ssm_status ssm_cache_get_stats(ssm_handle* h, ssm_cache_stats* out);
+```
+- Contadores desde a criação do handle
+- Thread-safe (shared_mutex)
+
+### Secure Buffer (mlock)
+```cpp
+void* secure_alloc(size_t size) noexcept;   // malloc + mlock
+void secure_free(void* ptr, size_t size) noexcept;  // munlock + free
+
+template <typename T>
+class secure_buffer;  // RAII wrapper sobre secure_alloc/secure_free
+```
+- Previne swapping de chaves criptográficas para disco
+- Destrutor faz `secure_erase` + `munlock` + `free`
+
+### Audit Log — operation_target / details
+- `audit_log.operation_target` — nome do secret ou alvo da operação
+- `audit_log.details` — detalhes do erro ou contexto adicional
+- Populado automaticamente em `secret_store`, `secret_get`, `secret_delete`, `kek_rotate`
 
 ## Comandos
 
@@ -96,12 +149,6 @@ ssm-cli tui
 ```
 Menu principal com submenus para todas as operações (user/secret/kek). Navegação com ↑↓, Enter, Esc. Senhas com ocultação `*`.
 
-### Visibility
-- API pública: marcada com `SSM_EXPORT` em `include/ssm/ssm.h`
-- Internals: `-fvisibility=hidden` via `-DSSM_VISIBILITY_HIDDEN=ON`
-- Símbolos internos (`ssm::v1`) invisíveis para quem linkedita o .so
-- Dev (default): `OFF` — testes acessam símbolos internos do .so
-
 ### Lint / formatação
 ```bash
 # clang-format (formatar todo o código)
@@ -114,7 +161,8 @@ run-clang-tidy -p build src/
 
 ### Release build (produção)
 ```bash
-cmake -B build-release -DSSM_VISIBILITY_HIDDEN=ON -DCMAKE_BUILD_TYPE=Release
+cmake -B build-release -DCMAKE_BUILD_TYPE=Release
 cmake --build build-release
-# Apenas 8 símbolos SSM_EXPORT visíveis no .so
+# SSM_VISIBILITY_HIDDEN é forçado ON em Release automaticamente
+# Apenas símbolos SSM_EXPORT visíveis no .so
 ```

@@ -54,10 +54,23 @@ typedef void (*ssm_secret_list_cb)(const char* name, const char* description,
                                     const char* updated_at, size_t public_key_len,
                                     void* user_data);
 
+typedef ssm_status (*ssm_password_validator)(const char* password, void* user_data);
+
+SSM_EXPORT void ssm_set_password_validator(ssm_password_validator validator, void* user_data);
+
 SSM_EXPORT ssm_status ssm_secret_list(ssm_handle* h, const char* username,
                                        ssm_secret_list_cb callback, void* user_data);
 
 SSM_EXPORT ssm_status ssm_kek_rotate(ssm_handle* h, const char* username);
+
+typedef struct {
+    size_t total_entries;
+    size_t valid_entries;
+    size_t hit_count;
+    size_t miss_count;
+} ssm_cache_stats;
+
+SSM_EXPORT ssm_status ssm_cache_get_stats(ssm_handle* h, ssm_cache_stats* out);
 
 SSM_EXPORT const char* ssm_status_to_string(ssm_status status);
 

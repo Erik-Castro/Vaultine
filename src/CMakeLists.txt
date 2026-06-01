@@ -52,6 +52,12 @@ if(SSM_VISIBILITY_HIDDEN)
     )
 endif()
 
+# Force visibility hidden in Release builds
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(SSM_VISIBILITY_HIDDEN ON CACHE BOOL "" FORCE)
+    message(STATUS "Release build: forcing SSM_VISIBILITY_HIDDEN=ON")
+endif()
+
 # --- install rules ---
 include(GNUInstallDirs)
 

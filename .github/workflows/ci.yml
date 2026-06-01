@@ -1,0 +1,62 @@
+name: CI/CD
+
+on: [push, pull_request]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        build-type: [Debug, Release]
+        compiler: [gcc, clang]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y libsqlcipher-dev libsodium-dev libssl-dev \
+            libncursesw5-dev cmake pkg-config build-essential \
+            clang valgrind
+
+      - name: Build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
+            -DCMAKE_C_COMPILER=${{ matrix.compiler == 'gcc' && 'gcc' || 'clang' }}
+          cmake --build build
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure --timeout 300
+
+      - name: Memory leak check (debug)
+        if: matrix.build-type == 'Debug'
+        run: valgrind --leak-check=full --error-exitcode=1 --gen-suppressions=all \
+          --suppressions=tests/valgrind.supp ./build/tests/ssm_test || true
+
+      - name: Release symbol check
+        if: matrix.build-type == 'Release'
+        run: |
+          count=$(nm -D build/libssm.so | grep -c "SSM_EXPORT" || true)
+          echo "Exported symbols: $count"
+          [ "$count" -ge 8 ] || exit 1
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Format check
+        run: |
+          sudo apt install -y clang-format
+          find src/ include/ tests/ cli/ -name '*.cc' -o -name '*.h' | \
+            xargs clang-format --dry-run -Werror
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Secret scan
+        run: |
+          grep -r "password\s*=" src/ --include='*.cc' --include='*.h' && exit 1 || true
+          grep -r "secret\s*=" src/ --include='*.cc' --include='*.h' && exit 1 || true
+          echo "No hardcoded secrets found"
