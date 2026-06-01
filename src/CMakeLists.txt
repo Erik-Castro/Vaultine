@@ -50,3 +50,35 @@ if(SSM_VISIBILITY_HIDDEN)
         VISIBILITY_INLINES_HIDDEN ON
     )
 endif()
+
+# --- install rules ---
+include(GNUInstallDirs)
+
+install(TARGETS ssm
+    EXPORT ssmTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.h"
+)
+
+install(EXPORT ssmTargets
+    FILE ssmTargets.cmake
+    NAMESPACE ssm::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ssm
+)
+
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+    ${CMAKE_SOURCE_DIR}/cmake/ssmConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/ssmConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ssm
+)
+
+install(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/ssmConfig.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ssm
+)

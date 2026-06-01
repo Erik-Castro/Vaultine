@@ -11,6 +11,7 @@ add_executable(ssm_test
     db/secrets_test.cc
     kek/kek_test.cc
     ssm_test.cc
+    integration/lifecycle_test.cc
 )
 
 target_include_directories(ssm_test

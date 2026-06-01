@@ -24,6 +24,18 @@ struct ssm_handle {
     std::shared_mutex mutex;
 };
 
+const char* ssm_status_to_string(ssm_status status) {
+    switch (status) {
+        case SSM_OK:        return "SSM_OK";
+        case SSM_ERR_AUTH:  return "SSM_ERR_AUTH";
+        case SSM_ERR_NOT_FOUND: return "SSM_ERR_NOT_FOUND";
+        case SSM_ERR_EXPIRED:   return "SSM_ERR_EXPIRED";
+        case SSM_ERR_INTEGRITY: return "SSM_ERR_INTEGRITY";
+        case SSM_ERR_INTERNAL:  return "SSM_ERR_INTERNAL";
+        default: return "SSM_ERR_UNKNOWN";
+    }
+}
+
 ssm_status ssm_init(ssm_handle** out, const char* db_path, const unsigned char* db_key,
                     size_t db_key_len) {
     if (!out)

@@ -59,6 +59,8 @@ SSM_EXPORT ssm_status ssm_secret_list(ssm_handle* h, const char* username,
 
 SSM_EXPORT ssm_status ssm_kek_rotate(ssm_handle* h, const char* username);
 
+SSM_EXPORT const char* ssm_status_to_string(ssm_status status);
+
 #ifdef __cplusplus
 }
 #endif

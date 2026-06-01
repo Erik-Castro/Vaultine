@@ -397,5 +397,15 @@ TEST_F(SsmApiTest, NullHandleReturnsError) {
     EXPECT_EQ(ssm_kek_rotate(nullptr, "a"), SSM_ERR_INTERNAL);
 }
 
+TEST_F(SsmApiTest, StatusToString) {
+    EXPECT_STREQ(ssm_status_to_string(SSM_OK), "SSM_OK");
+    EXPECT_STREQ(ssm_status_to_string(SSM_ERR_AUTH), "SSM_ERR_AUTH");
+    EXPECT_STREQ(ssm_status_to_string(SSM_ERR_NOT_FOUND), "SSM_ERR_NOT_FOUND");
+    EXPECT_STREQ(ssm_status_to_string(SSM_ERR_EXPIRED), "SSM_ERR_EXPIRED");
+    EXPECT_STREQ(ssm_status_to_string(SSM_ERR_INTEGRITY), "SSM_ERR_INTEGRITY");
+    EXPECT_STREQ(ssm_status_to_string(SSM_ERR_INTERNAL), "SSM_ERR_INTERNAL");
+    EXPECT_STREQ(ssm_status_to_string(static_cast<ssm_status>(99)), "SSM_ERR_UNKNOWN");
+}
+
 }  // namespace
 }  // namespace ssm::v1
