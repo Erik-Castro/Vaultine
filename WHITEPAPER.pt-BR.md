@@ -384,12 +384,46 @@ As seguintes características do documento de design original foram implementada
 | Log de Auditoria (tabela `audit_log`) | `src/db/audit_log.h` — todas as 9 operações registradas | ✅ Implementado |
 | `kek_version` proteção contra rollback | `src/db/kek_metadata.cc` — verificação de versão no update | ✅ Implementado |
 | Regras de instalação CMake + config package | `src/CMakeLists.txt` + `cmake/ssmConfig.cmake.in` | ✅ Implementado |
+| CLI (`ssm-cli`) com todas as operações | `cli/ssm_cli.cc` — dispatch de user/secret/kek/env | ✅ Implementado |
+| TUI ncurses (`ssm-cli tui`) | `cli/ssm_tui.cc` — interface interativa com menus, formulários, listas | ✅ Implementado |
 
-### 10.1 Operações em Lote
+### 10.1 CLI (Interface de Linha de Comando)
+
+O Vaultine inclui um cliente CLI (`ssm-cli`) que expõe todas as operações da API:
+- **user**: register, auth, delete, change-password
+- **secret**: store (com arquivos de chave), get, delete, list
+- **kek**: rotate
+- **env**: exec (injetar segredos como variáveis de ambiente)
+- **tui**: interface ncurses interativa
+
+```bash
+ssm-cli --db vaultine.db user register alice
+ssm-cli --db vaultine.db secret store alice minha-chave /path/to/key --desc "Chave RSA"
+ssm-cli --db vaultine.db kek rotate alice
+```
+
+O CLI suporta saída JSON (`--json`), senha inline (`--password`), e chave SQLCipher (`--db-key`).
+
+### 10.2 TUI (Interface ncurses)
+
+O subcomando `ssm-cli tui` entra em modo ncurses com menus e formulários para todas as operações sem necessidade de argumentos de linha de comando:
+
+| Tecla | Ação |
+|-------|------|
+| `↑ ↓` | Navegar entre itens de menu / scroll |
+| `Enter` | Selecionar / Confirmar |
+| `Esc` | Voltar / Cancelar |
+| `1-5` | Atalho numérico no menu principal |
+| `q` | Sair |
+| `y`/`n` | Confirmar operações destrutivas |
+
+O TUI lê arquivos de chave do disco para `secret store`, exibe segredos como hex dump, e fornece listagem scrollável com paginação para `secret list`. Senhas são mascaradas com `*` durante a digitação.
+
+### 10.3 Operações em Lote
 
 Para usuários com milhares de segredos, `ssm_kek_rotate` faz uma descriptografia+criptografia por segredo. Operações em lote poderiam paralelizar isto (ex.: usando OpenMP ou thread pools), embora cuidado deva ser tomado com a serialização do SQLite.
 
-### 10.2 Integração de Chave Mestra
+### 10.4 Integração de Chave Mestra
 
 Uma chave mestra opcional (derivada de um TPM ou HSM) poderia prover uma camada adicional de proteção. A chave mestra wrapping cada KEK, independente da chave de wrapping derivada do usuário. Isto exigiria tanto a chave mestra QUANTO as credenciais do usuário para recuperar uma KEK.
 
