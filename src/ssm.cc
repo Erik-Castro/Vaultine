@@ -145,11 +145,12 @@ ssm_status ssm_init(ssm_handle** out, const char* db_path, const unsigned char* 
         return SSM_ERR_INTERNAL;
     }
 
-    auto* h = new (std::nothrow) ssm_handle{db};
-    if (!h) {
+    void* mem = secure_alloc(sizeof(ssm_handle));
+    if (!mem) {
         db_close(db);
         return SSM_ERR_INTERNAL;
     }
+    auto* h = ::new (mem) ssm_handle{db};
 
     *out = h;
     return SSM_OK;
@@ -167,7 +168,8 @@ ssm_status ssm_destroy(ssm_handle* h) {
         }
         db_close(h->db);
     }
-    delete h;
+    h->~ssm_handle();
+    secure_free(h, sizeof(ssm_handle));
     return SSM_OK;
 }
 
