@@ -2,6 +2,7 @@
 
 #include <sodium.h>
 
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <new>
@@ -220,7 +221,7 @@ ssm_status ssm_user_register(ssm_handle* h, const char* username, const char* pa
     if (!kek_store(h->db, user_id, wrapped, wrapped_len, salt, salt_len, expires_at))
         return SSM_ERR_INTERNAL;
 
-    audit_write(h->db, username, user_id, "user_register", SSM_OK);
+    audit_write(h->db, username, user_id, "user_register", SSM_OK, nullptr, "ok");
     return SSM_OK;
 }
 
@@ -246,7 +247,7 @@ ssm_status ssm_user_authenticate(ssm_handle* h, const char* username, const char
 
     audit_write(h->db, username, user.id, "user_authenticate",
                 pw_ok ? SSM_OK : SSM_ERR_AUTH,
-                nullptr, pw_ok ? nullptr : "password mismatch");
+                nullptr, pw_ok ? "ok" : "password mismatch");
     return SSM_OK;
 }
 
@@ -309,7 +310,10 @@ ssm_status ssm_secret_store(ssm_handle* h, const char* username, const unsigned 
                        public_key_len, nonce, sizeof(nonce), tag, sizeof(tag), description))
         return SSM_ERR_INTERNAL;
 
-    audit_write(h->db, username, user.id, "secret_store", SSM_OK, name);
+    char det[64] = {};
+    std::snprintf(det, sizeof(det), "key_size=%zu,has_pub=%d",
+                  private_key_len, public_key_len > 0 ? 1 : 0);
+    audit_write(h->db, username, user.id, "secret_store", SSM_OK, name, det);
     return SSM_OK;
 }
 
@@ -393,7 +397,7 @@ ssm_status ssm_secret_get(ssm_handle* h, const char* username, const char* name,
         }
     }
 
-    audit_write(h->db, username, user.id, "secret_get", SSM_OK, name);
+    audit_write(h->db, username, user.id, "secret_get", SSM_OK, name, "ok");
     return SSM_OK;
 }
 
@@ -423,7 +427,7 @@ ssm_status ssm_secret_delete(ssm_handle* h, const char* username, const char* na
     if (!secrets_delete(h->db, user.id, name))
         return SSM_ERR_NOT_FOUND;
 
-    audit_write(h->db, username, user.id, "secret_delete", SSM_OK, name);
+    audit_write(h->db, username, user.id, "secret_delete", SSM_OK, name, "ok");
     return SSM_OK;
 }
 
@@ -460,7 +464,7 @@ ssm_status ssm_secret_list(ssm_handle* h, const char* username,
                  s.public_key.size(), user_data);
     }
 
-    audit_write(h->db, username, user.id, "secret_list", SSM_OK);
+    audit_write(h->db, username, user.id, "secret_list", SSM_OK, nullptr, "ok");
     return SSM_OK;
 }
 
@@ -488,7 +492,7 @@ ssm_status ssm_user_delete(ssm_handle* h, const char* username, const char* pass
     if (!users_delete(h->db, user.id))
         return SSM_ERR_INTERNAL;
 
-    audit_write(h->db, username, user.id, "user_delete", SSM_OK);
+    audit_write(h->db, username, user.id, "user_delete", SSM_OK, nullptr, "ok");
     return SSM_OK;
 }
 
@@ -607,7 +611,8 @@ ssm_status ssm_user_change_password(ssm_handle* h, const char* username,
         result = SSM_ERR_INTERNAL;
     }
 
-    audit_write(h->db, username, user.id, "user_change_password", result);
+    audit_write(h->db, username, user.id, "user_change_password", result,
+                nullptr, result == SSM_OK ? "ok" : nullptr);
     return result;
 }
 
@@ -631,6 +636,6 @@ ssm_status ssm_kek_rotate(ssm_handle* h, const char* username) {
     }
 
     cache_invalidate(h, user.id);
-    audit_write(h->db, username, user.id, "kek_rotate", SSM_OK, username);
+    audit_write(h->db, username, user.id, "kek_rotate", SSM_OK, username, "ok");
     return SSM_OK;
 }
