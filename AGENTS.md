@@ -1,169 +1,78 @@
 # AGENTS.md — Vaultine
 
-**Projeto:** Biblioteca dinâmica C++ (.so) POSIX para gerenciamento criptográfico de segredos multi-tenant.
+**Projeto:** Biblioteca dinâmica C++ (.so) POSIX para gerenciamento criptográfico de segredos multi-tenant. v0.2.0-beta.
 
-## Pilares Metodológicos
+## Convenções
 
-- **KISS**: API minimalista, fluxo linear, sem padrões complexos (complexidade = vetor de ataque).
-- **TDD**: Testes unitários/integração obrigatórios antes do código. SQLite in-memory para fixtures. Validar: sucesso, tag GCM corrompida, expiração KEK, concorrência massiva.
-- **SDD** (Security-Driven Development): Sanitizar entradas (tamanho/formato). `memset_s` em buffers sensíveis após uso. Erros opacos — sem vazar detalhes de implementação.
-
-## Stack
-
-- **C++** → Shared Object (.so) POSIX
-- **SQLite + SQLCipher** (criptografia em repouso no arquivo)
-- **OpenSSL** (primitivas criptográficas)
-- Thread-safety: `SQLITE_OPEN_FULLMUTEX` + `std::shared_mutex`
-
-## Hierarquia Criptográfica
-
-| Etapa | Algoritmo | Detalhe |
-|-------|-----------|---------|
-| Hash de senha | ARGON2ID | 64 bytes — somente para autenticação |
-| Proteção KEK (repouso) | AES-KW-256 | Chave de wrap derivada de: hash_autenticação + salt |
-| Criptografia de segredos | AES-GCM-256 | AEAD: tag de 16B, nonce de 12B |
-| Rotação KEK | AES-KW-256 → AES-GCM-256 | Re-wrap atômico |
-
-## Ciclo de Vida da KEK
-
-- **Validade:** 90 dias (configurável por tenant)
-- **Gatilho:** qualquer operação da API verifica expiração
-- **Fluxo de rotação:** gerar nova KEK → descriptografar segredos em memória → re-criptografar com KEK nova → encapsular nova KEK → **transação ACID única** (rollback total se falhar)
-
-## Schema SQLite
-
-### `users`
-| Coluna | Tipo | Restrição |
-|--------|------|-----------|
-| `id` | INTEGER | PK AUTOINCREMENT |
-| `username` | TEXT | UNIQUE NOT NULL |
-| `password_hash` | BLOB | NOT NULL (Argon2id encoded string, ~128B, embeds salt + params) |
-| `created_at` | TEXT | NOT NULL DEFAULT CURRENT_TIMESTAMP |
-
-### `kek_metadata`
-| Coluna | Tipo | Restrição |
-|--------|------|-----------|
-| `id` | INTEGER | PK AUTOINCREMENT |
-| `user_id` | INTEGER | FK → users(id) ON DELETE CASCADE |
-| `wrapped_kek` | BLOB | NOT NULL (AES-KW-256) |
-| `salt` | BLOB | NOT NULL |
-| `expires_at` | TEXT | NOT NULL (UTC, default +90d) |
-| `kek_version` | INTEGER | NOT NULL DEFAULT 1 |
-
-### `audit_log`
-| Coluna | Tipo | Restrição |
-|--------|------|-----------|
-| `id` | INTEGER | PK AUTOINCREMENT |
-| `user_id` | INTEGER | NULLABLE |
-| `username` | TEXT | NOT NULL |
-| `operation` | TEXT | NOT NULL |
-| `operation_target` | TEXT | NULLABLE (ex: nome do secret) |
-| `details` | TEXT | NULLABLE (ex: motivo do erro) |
-| `result` | TEXT | NOT NULL |
-| `timestamp` | TEXT | NOT NULL DEFAULT CURRENT_TIMESTAMP |
-
-### `secrets`
-| Coluna | Tipo | Restrição |
-|--------|------|-----------|
-| `id` | INTEGER | PK AUTOINCREMENT |
-| `user_id` | INTEGER | FK → users(id) ON DELETE CASCADE |
-| `name` | TEXT | NULLABLE |
-| `private_key` | BLOB | NOT NULL (AES-GCM-256) |
-| `public_key` | BLOB | NULLABLE |
-| `nonce` | BLOB | NOT NULL |
-| `tag` | BLOB | NOT NULL (16B GCM auth tag) |
-| `description` | TEXT | NULLABLE |
-| `updated_at` | TEXT | NOT NULL DEFAULT CURRENT_TIMESTAMP |
-
-## API Pública — Novas Features (v0.2) ✅
-
-### Validação de Senha
-```c
-typedef ssm_status (*ssm_password_validator)(const char* password, void* user_data);
-void ssm_set_password_validator(ssm_password_validator validator, void* user_data);
-```
-- Default: mínimo 4 caracteres
-- `NULL` restaura o validador default
-- Chamado em `ssm_user_register` e `ssm_user_change_password`
-
-### Cache Statistics
-```c
-typedef struct {
-    size_t total_entries;   // SSM_CACHE_MAX = 256
-    size_t valid_entries;   // entradas atualmente válidas
-    size_t hit_count;       // acertos cumulativos
-    size_t miss_count;      // erros cumulativos
-} ssm_cache_stats;
-
-ssm_status ssm_cache_get_stats(ssm_handle* h, ssm_cache_stats* out);
-```
-- Contadores desde a criação do handle
-- Thread-safe (shared_mutex)
-
-### Secure Buffer (mlock)
-```cpp
-void* secure_alloc(size_t size) noexcept;   // malloc + mlock
-void secure_free(void* ptr, size_t size) noexcept;  // munlock + free
-
-template <typename T>
-class secure_buffer;  // RAII wrapper sobre secure_alloc/secure_free
-```
-- Previne swapping de chaves criptográficas para disco
-- Destrutor faz `secure_erase` + `munlock` + `free`
-
-### Audit Log — operation_target / details
-- `audit_log.operation_target` — nome do secret ou alvo da operação
-- `audit_log.details` — detalhes do erro ou contexto adicional
-- Populado automaticamente em `secret_store`, `secret_get`, `secret_delete`, `kek_rotate`
+- C++17, extensões `.cc`/`.h`, namespace `ssm::v1`
+- API pública em `include/ssm/ssm.h` (C-compatible `extern "C"`). Headers privados em `src/` ao lado do `.cc`.
+- Padrão de erro: `do { ... } while(false)` com `break` no primeiro fallo — sem exceções.
+- Wiping: `sodium_memzero` via `secure_erase()`. `secure_alloc()` faz `malloc + mlock`.
+- `SSM_EXPORT` controla visibilidade de símbolos; `SSM_VISIBILITY_HIDDEN=ON` em Release.
 
 ## Comandos
 
-### Dependências (sistema)
+```bash
+# Build
+cmake -B build && cmake --build build
+
+# Testes (GTest v1.15.2 via FetchContent)
+ctest --test-dir build --output-on-failure
+# ou direto: ./build/tests/ssm_test
+
+# Release
+cmake -B build-release -DCMAKE_BUILD_TYPE=Release && cmake --build build-release
+
+# Lint (CI usa --dry-run -Werror)
+find src/ include/ tests/ cli/ -name '*.cc' -o -name '*.h' | xargs clang-format -i
+
+# Fuzzing (clang only)
+cmake -B build-fuzz -DCMAKE_C_COMPILER=clang -DSSM_FUZZING=ON && cmake --build build-fuzz
+./build-fuzz/tests/fuzz_api -max_total_time=10 -runs=100000 tests/fuzz/corpus/api/
+
+# Benchmarks
+cmake -B build-bench -DSSM_BUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release && cmake --build build-bench
+./build-bench/tests/ssm_bench --benchmark_min_time=0.1
+```
+
+## Dependências
+
 ```bash
 # Debian/Ubuntu
-apt install libsqlcipher-dev libsodium-dev libssl-dev libncursesw5-dev \
-            cmake pkg-config
-
-# Termux
+apt install libsqlcipher-dev libsodium-dev libssl-dev libncursesw5-dev cmake pkg-config
+# Termux (SQLCipher indisponível — fallback para SQLite puro)
 pkg install libsodium openssl sqlite ncursesw cmake ninja
-
-# ou via Vcpkg (alternativa):
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=/path/to/vcpkg.cmake
 ```
 
-### Build
+## Arquitetura
+
+- **Handle:** `ssm_handle` com `sqlite3*`, `std::shared_mutex`, LRU cache de 256 KEKs wrapping keys
+- **Thread-safety:** `SQLITE_OPEN_FULLMUTEX` + `std::unique_lock<std::shared_mutex>` em toda API pública
+- **KEK:** AES-KW-256 wrapped, validade 90d, rotação atômica via transação ACID (`BEGIN IMMEDIATE`)
+- **Cache:** wrapping keys cacheadas por `username`; `ssm_cache_get_stats()` expõe hit/miss
+- **Audit log:** toda operação registra `operation`, `operation_target`, `details`, `result`
+- **Validador de senha:** configurável via `ssm_set_password_validator()`; default 4+ chars
+
+## Testes
+
+- SQLite `:memory:` para maioria dos testes; fixtures baseadas em arquivo para expiração KEK e corrupção de tag GCM
+- `SsmApiCorruptionTest` corrompe tag GCM direto no DB para testar `SSM_ERR_INTEGRITY`
+- Testes de concorrência: `std::thread` com até 10 threads
+- CI roda `ctest --timeout 300`, valgrind em Debug, `nm -D` checa ≥8 símbolos exportados em Release
+
+## CodeGraph
+
+O projeto tem índice CodeGraph (`.codegraph/`). Use `codegraph_*` tools para consultas estruturais
+(definições, chamadores, callees, impacto) — é mais rápido e preciso que grep.
+
+## CLI
+
 ```bash
-cmake -B build
-cmake --build build
+ssm-cli user register|auth|delete|change-password <username>
+ssm-cli secret store|get|delete|list <username> [<name>]
+ssm-cli kek rotate <username>
+ssm-cli cache-stats
+ssm-cli env exec <username> <cmd> [args...]  # injeta SSM_<NAME> como env vars
+ssm-cli tui                                  # ncurses interativo
 ```
-
-### Testes
-```bash
-ctest --test-dir build --output-on-failure
-# ou direto:
-./build/tests/ssm_test
-```
-
-### TUI (ncurses)
-```bash
-ssm-cli tui
-```
-Menu principal com submenus para todas as operações (user/secret/kek/cache-stats). Navegação com ↑↓, Enter, Esc. Senhas com ocultação `*`.
-
-### Lint / formatação
-```bash
-# clang-format (formatar todo o código)
-find src/ include/ tests/ -name '*.cc' -o -name '*.h' | xargs clang-format -i
-
-# clang-tidy (precisa de compile_commands.json)
-cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-run-clang-tidy -p build src/
-```
-
-### Release build (produção)
-```bash
-cmake -B build-release -DCMAKE_BUILD_TYPE=Release
-cmake --build build-release
-# SSM_VISIBILITY_HIDDEN é forçado ON em Release automaticamente
-# Apenas símbolos SSM_EXPORT visíveis no .so
-```
+Opções: `--db <path>` (default `./ssm.db`), `--db-key <hex>`, `--password <str>`, `--json`.
