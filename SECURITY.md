@@ -10,7 +10,7 @@
 
 Please **DO NOT** open a public issue for security vulnerabilities.
 
-Instead, email: **erik@vaultine.dev** with:
+Instead, email: **security@vaultine.dev** with:
 
 - Description of the vulnerability
 - Affected versions
