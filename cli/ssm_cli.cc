@@ -95,6 +95,8 @@ static void print_usage() {
         "                        --limit, --offset)\n"
         "  backup create/restore <file>\n"
         "                   Encrypted backup (use --backup-key <hex64>)\n"
+        "  export [--format json|csv] [--redact-pii]\n"
+        "                   Export metadata (JSON/CSV) to stdout\n"
         "  tui              Interactive terminal interface\n"
         "  env exec <username> [--] <command> [args...]\n"
         "  help [command]\n",
@@ -171,11 +173,10 @@ static int handle_user_auth(int argc, char** argv) {
     ssm_destroy(h);
     if (st != SSM_OK)
         die_status(st, "user auth");
-    if (g_json) {
+    if (g_json)
         printf("{\"authenticated\":%s}\n", valid ? "true" : "false");
-    } else {
+    else
         printf("%s\n", valid ? "OK: authenticated" : "FAIL: invalid credentials");
-    }
     return valid ? 0 : 1;
 }
 
@@ -223,10 +224,8 @@ static int handle_user_change_password(int argc, char** argv) {
 
     std::string old_pw = prompt_password(username);
     char prompt[256];
-    std::snprintf(prompt, sizeof(prompt), "new password for %s: ", username);
+    std::snprintf(prompt, sizeof(prompt), "New password for %s: ", username);
     std::string new_pw = read_password(prompt);
-    if (new_pw.empty())
-        die("new password cannot be empty");
 
     ssm_handle* h = nullptr;
     ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
@@ -238,6 +237,43 @@ static int handle_user_change_password(int argc, char** argv) {
     if (st != SSM_OK)
         die_status(st, "change password");
     printf("OK: password changed for '%s'\n", username);
+    return 0;
+}
+
+// -------------------------------------------------------------------
+// export handler
+// -------------------------------------------------------------------
+static int handle_export(int argc, char** argv) {
+    ssm_export_format fmt = SSM_EXPORT_JSON;
+    int redact_pii = 0;
+
+    for (int i = 0; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--format") == 0 && i + 1 < argc) {
+            if (std::strcmp(argv[++i], "csv") == 0)
+                fmt = SSM_EXPORT_CSV;
+        } else if (std::strcmp(argv[i], "--redact-pii") == 0) {
+            redact_pii = 1;
+        } else {
+            fprintf(stderr, "error: unknown export option '%s'\n", argv[i]);
+            return 1;
+        }
+    }
+
+    ssm_handle* h = nullptr;
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
+
+    st = ssm_export(h, fmt, redact_pii,
+                    [](const char* chunk, size_t len, void*) {
+                        fwrite(chunk, 1, len, stdout);
+                    },
+                    nullptr);
+    ssm_destroy(h);
+
+    if (st != SSM_OK)
+        die_status(st, "export");
+
     return 0;
 }
 
@@ -1017,6 +1053,8 @@ int main(int argc, char** argv) {
         return handle_cache_stats(remaining, cmd_argv);
     if (std::strcmp(cmd, "audit-log") == 0)
         return handle_audit_log(remaining, cmd_argv);
+    if (std::strcmp(cmd, "export") == 0)
+        return handle_export(remaining, cmd_argv);
 
     fprintf(stderr, "%s: unknown command '%s'. Try --help\n", g_prog, cmd);
     return 1;

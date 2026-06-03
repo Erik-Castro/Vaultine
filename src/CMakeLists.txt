@@ -12,6 +12,7 @@ add_library(ssm SHARED
     db/audit_log.cc
     kek/kek.cc
     backup/backup.cc
+    export/export.cc
 )
 
 target_include_directories(ssm

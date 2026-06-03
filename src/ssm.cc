@@ -19,6 +19,7 @@
 #include "db/kek_metadata.h"
 #include "db/secrets.h"
 #include "db/users.h"
+#include "export/export.h"
 #include "kek/kek.h"
 #include "utils/secure_memory.h"
 
@@ -776,4 +777,12 @@ ssm_status ssm_backup_restore(ssm_handle* h, const char* backup_path,
     }
 
     return SSM_OK;
+}
+
+ssm_status ssm_export(ssm_handle* h, ssm_export_format format, int redact_pii,
+                      ssm_export_cb callback, void* user_data) {
+    if (!h || !callback)
+        return SSM_ERR_INTERNAL;
+    std::shared_lock lock(h->mutex);
+    return export_metadata(h->db, format, redact_pii, callback, user_data);
 }

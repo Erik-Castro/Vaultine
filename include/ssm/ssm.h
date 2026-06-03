@@ -87,6 +87,16 @@ SSM_EXPORT ssm_status ssm_backup_create(ssm_handle* h, const char* backup_path,
 SSM_EXPORT ssm_status ssm_backup_restore(ssm_handle* h, const char* backup_path,
                                          const unsigned char* backup_key, size_t backup_key_len);
 
+typedef enum {
+    SSM_EXPORT_JSON = 0,
+    SSM_EXPORT_CSV = 1
+} ssm_export_format;
+
+typedef void (*ssm_export_cb)(const char* chunk, size_t len, void* user_data);
+
+SSM_EXPORT ssm_status ssm_export(ssm_handle* h, ssm_export_format format, int redact_pii,
+                                 ssm_export_cb callback, void* user_data);
+
 SSM_EXPORT const char* ssm_status_to_string(ssm_status status);
 
 #ifdef __cplusplus
