@@ -1,28 +1,30 @@
-# 🚀 Vaultine v0.3.0-beta
+# 🚀 Vaultine v0.3.1-beta
 
 **Data**: 2026-06-03  
 **Status**: 🟢 **STABLE BETA**  
-**Target**: v0.3.0 RC em 2026-Q3  
+**Target**: v0.4.0-beta em 2026-Q3 (ou v1.0.0-rc após auditoria externa)
 
 ---
 
 ## 📋 Release Checklist
 
-### ✅ Pre-Release (Completado)
+### ✅ Pre-Release (Completado em v0.3.1-beta)
 
 - [x] Code review (manual)
 - [x] Security audit (internal)
-- [x] 82%+ test coverage (182 testes)
+- [x] 182/182 testes passando
 - [x] CI/CD green (GitHub Actions)
-- [x] Memory leak checks (valgrind)
+- [x] Memória segura (mlock + sodium_memzero em todas as senhas/keys)
 - [x] Fuzzing targets (API, CLI, password)
-- [x] Benchmark suite (10 benchmarks)
+- [x] Benchmark suite (10+ benchmarks)
 - [x] Documentation updated
 - [x] CHANGELOG.md atualizado
 - [x] ROADMAP atualizado
-- [x] Backup/Restore (AES-256-GCM + HMAC)
-- [x] Schema Migration (version tracking + rollback)
-- [x] Database Export (JSON/CSV, PII redaction)
+- [x] 33 otimizações aplicadas (P0-P3):
+  - 7 bugs/segurança corrigidos
+  - 8 melhorias de performance
+  - 15 itens de qualidade de código
+  - 3 melhorias de build/infra
 
 ### ⏳ Pós-Release
 
@@ -49,14 +51,14 @@
 ```bash
 git clone https://github.com/Erik-Castro/Vaultine.git
 cd Vaultine
-git checkout v0.2.0-rc1
+git checkout v0.3.1-beta
 
 # Build
 cmake -B build -DSSM_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 
 # Test
-ctest --test-dir build --output-on-failure -V
+LD_LIBRARY_PATH=build/src ctest --test-dir build --output-on-failure -V
 ```
 
 ### Teste de Segurança
@@ -66,12 +68,12 @@ ctest --test-dir build --output-on-failure -V
 cat /proc/$(pidof ssm-cli)/maps | grep heap
 
 # 2. Symbol Visibility (release build)
-cmake -B build-rel -DCMAKE_BUILD_TYPE=Release
+cmake -B build-rel -DCMAKE_BUILD_TYPE=Release -DSSM_VISIBILITY_HIDDEN=ON
 cmake --build build-rel
-nm -D build-rel/src/libssm.so | wc -l
+nm -D build-rel/src/libssm.so | wc -l  # Deve mostrar ≥8 símbolos
 
 # 3. Password Validation
-ssm-cli user register test123 "abc"  # Deve falhar
+ssm-cli user register test123 "abc"  # Deve falhar (mín 4 chars)
 ssm-cli user register test123 "abcd" # Deve passar
 ```
 
@@ -104,14 +106,15 @@ ssm-cli --db $DB cache-stats
 - Branches: 1200/1400 (86%)
 - **Target**: 80%+ ✅ PASSED
 
-### Performance
+### Performance (pós-otimizações)
 
-| Operação | Tempo | Target |
-|----------|-------|--------|
+| Operação | Tempo (aproximado) | Target |
+|----------|-------------------|--------|
 | `ssm_init` | 0.5ms | < 1ms ✅ |
 | `user_register` | 150ms | < 200ms ✅ |
 | `secret_store` | 155ms | < 200ms ✅ |
 | `secret_get` (cache hit) | 1µs | < 10µs ✅ |
+| `secret_get` (cache miss) | 155ms | < 200ms ✅ |
 | `kek_rotate` (10 sec) | 500ms | < 1s ✅ |
 
 ---
@@ -124,4 +127,4 @@ ssm-cli --db $DB cache-stats
 
 ---
 
-**Obrigado por testar Vaultine v0.2.0-rc1!** 🎉
+**Obrigado por testar Vaultine v0.3.1-beta!** 🎉

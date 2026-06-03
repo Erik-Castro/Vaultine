@@ -4,32 +4,27 @@
 
 ---
 
-## Current Status: v0.3.0-beta ✅
+## Current Status: v0.3.1-beta ✅
 
-O core do Vaultine está completo: API C, CLI, TUI, REST API server, bindings (Python/Rust/Go/Node.js). O que resta é distribuição, bindings para linguagens faltantes, e auditoria de segurança externa.
+O core do Vaultine está completo: API C, CLI, TUI, REST API server, bindings (Python/Rust/Go/Node.js). 33 otimizações aplicadas — bugs de segurança, performance, qualidade de código e build.
 
 | Release | Status | O que inclui |
 |---------|--------|-------------|
 | **v0.1.0-alpha** | ✅ Entregue | API Core, CLI, TUI, Python bindings |
 | **v0.2.0-beta** | ✅ Entregue | Segurança (mlock, password validation, audit logs), testes (182), CI/CD, fuzzing, benchmark suite |
-| **v0.3.0-beta** | ✅ **ENTREGUE** | Schema migration, backup/restore, export JSON/CSV, bindings (Rust/Go/Node.js), REST API server |
+| **v0.3.0-beta** | ✅ ENTREGUE | Schema migration, backup/restore, export JSON/CSV, bindings (Rust/Go/Node.js), REST API server |
+| **v0.3.1-beta** | ✅ **LANÇADO** | 33 otimizações (P0-P3): 7 bugs, 8 perf, 15 qualidade, 3 build. backup format v2 |
 | **v1.0.0-rc** | 🔜 Próximo | Security audit, package managers, Docker, Java bindings, comunidade |
 
 ---
 
-## v0.3.0-beta — Feature Complete ✅
+## v0.3.1-beta — Otimizações & Correções ✅
 
-### Completado
-- [x] Schema migration (version tracking + rollback)
-- [x] Backup/restore (AES-256-GCM + HMAC-SHA256)
-- [x] Export JSON/CSV (com PII redaction)
-- [x] Bindings: **Rust** (crate `vaultine`, 8 tests)
-- [x] Bindings: **Go** (package `vaultine`, 11 tests)
-- [x] Bindings: **Node.js** (N-API addon, 25 tests)
-- [x] CLI completo (user, secret, kek, cache-stats, env exec, tui)
-- [x] **REST API Server**: 17 endpoints via libevent evhttp + jsoncpp, daemonize support
-- [x] 182 testes C, testes de integração para todas as 3 linguagens
-- [x] Error message clarity, user enumeration fix
+### Completado (33 otimizações)
+- [x] **P0 — Bugs/Segurança (7/7)**: transaction leak, const_cast UB, Json leak, fuzz underflow, key separation, argon2id API, overflow guards
+- [x] **P1 — Performance (8/8)**: prepare fora loop, buffers pré-alocados, string_view URI, stack→heap, EVP_CTX thread_local, streaming HMAC
+- [x] **P2 — Qualidade (15/17)**: getpass heap, backup key wiped, snprintf, vector replace, strtoll, static_cast, sodium_memzero, dead code removido, std::size, strdup→string, sodium_init centralizado, export.h forward-declare, migrations.h std::array, benchmark checks
+- [x] **P3 — Build (3/3)**: CMake comment, PCH shared_mutex, backup timestamp uint64
 
 ### Bloqueado (requer ambiente específico)
 | Item | Bloqueio |

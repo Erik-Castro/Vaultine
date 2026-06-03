@@ -1,18 +1,17 @@
 #!/bin/bash
-# 🚀 Release v0.2.0-rc1 — Helper Script
+# 🚀 Release v0.3.1-beta — Helper Script
 
 set -e
 
-VERSION="v0.2.0-rc1"
-COMMIT="3e872665cda0c3d4ff2311bbd6d54a0bb4ecea62"
+VERSION="v0.3.1-beta"
 
 echo "🚀 Vaultine Release $VERSION"
 echo "============================="
 echo ""
 echo "[1/4] Creating git tag..."
 git tag -a "$VERSION" \
-  -m "Release Candidate 1: Security hardening & CI/CD" \
-  -m "73% of v0.2.0 completed. Ready for beta testing."
+  -m "Release v0.3.1-beta: 33 optimizations — bugs, performance, quality, build" \
+  -m "182/182 tests. Backup format v2 (breaking)."
 
 echo "✅ Tag created: $VERSION"
 
@@ -22,17 +21,22 @@ git push origin "$VERSION"
 echo "✅ Tag pushed"
 
 echo ""
-echo "[3/4] Summary"
+echo "[3/4] Creating source tarball..."
+git archive --format=tar.gz -o "vaultine-${VERSION}.tar.gz" "$VERSION"
+echo "✅ Tarball created: vaultine-${VERSION}.tar.gz"
+
+echo ""
+echo "[4/4] Summary"
 echo "============"
-echo "✅ Release v0.2.0-rc1 created successfully!"
+echo "✅ Release $VERSION created and pushed!"
 echo ""
 echo "📍 Next Steps:"
 echo "   1. Go to: https://github.com/Erik-Castro/Vaultine/releases/tag/$VERSION"
-echo "   2. Edit and publish the draft release"
-echo "   3. Announce in GitHub Discussions"
+echo "   2. Upload vaultine-${VERSION}.tar.gz"
+echo "   3. Publish the release"
+echo "   4. Announce in GitHub Discussions"
 echo ""
 echo "📚 Documentation:"
 echo "   - Testing Guide: RELEASE_CANDIDATE.md"
 echo "   - Changelog: CHANGELOG.md"
 echo "   - Roadmap: ROADMAP.md"
-echo ""

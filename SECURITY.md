@@ -1,7 +1,7 @@
 # Security Policy
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.2.0--beta-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.1--beta-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/vulnerability-report%20via%20email-critical?style=flat-square" alt="Report">
 </p>
@@ -59,5 +59,6 @@ We will:
 
 | Version | Release | Supported |
 |---------|---------|-----------|
-| 0.2.x   | 2026-06 | ✅ Yes    |
+| 0.3.x   | 2026-06 | ✅ Yes    |
+| 0.2.x   | 2026-06 | ❌ No     |
 | 0.1.x   | 2026-06 | ❌ No     |

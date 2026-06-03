@@ -7,6 +7,55 @@ e este projeto segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.1-beta] — 2026-06-03
+
+### 🔧 Otimizações & Correções (33 itens)
+
+#### 🐛 Bugs & Segurança (P0 — 7/7)
+- **Transaction leak**: `BEGIN IMMEDIATE` movido após alocações em `kek.cc`
+- **const_cast UB**: `aes_gcm.cc` copia tag GCM antes de passar para OpenSSL
+- **Json::CharReader leak**: `ssm_server.cc` substituído por `unique_ptr`
+- **Fuzz underflow**: `fuzz_password.cc` guard para `pos >= size`
+- **Key separation**: `backup.cc` deriva `enc_key` + `hmac_key` via SHA-256 domain separation
+- **Argon2id API**: parâmetros `salt`/`salt_len` removidos (eram ignorados)
+- **Integer overflow**: `secure_memory.h` guards em secure_buffer/vector alocações
+
+#### ⚡ Performance (P1 — 8/8)
+- **kek.cc**: `sqlite3_prepare` movido para fora do loop re-encrypt
+- **kek.cc**: buffers pré-alocados por KEK em vez de por iteração
+- **URI parsing**: `ssm_server.cc` usa `string_view` (elimina O(n²) erase)
+- **Stack→heap**: arrays de 128KB substituídos por `std::vector` em `ssm_server.cc`
+- **AES-GCM**: `EVP_CIPHER_CTX` thread-local reusado em vez de alocado por operação
+- **secrets.cc**: `reserve(64)` em buffer de saída
+- **backup.cc**: HMAC streaming (pipeline encrypt+mac)
+
+#### 🧹 Qualidade de Código (P2 — 15/17)
+- **getpass seguro**: `ssm_cli.cc` aloca senha no heap + `sodium_memzero`
+- **Backup key wiped**: stack de `ssm_server.cc` limpo após uso
+- **strncpy→snprintf**: garante null-termination em `ssm_server.cc`
+- **hex_decode**: raw `new[]` substituído por `std::vector` em `hex_utils.h`
+- **ssm_cli.cc**: 3 ocorrências de raw `new[]`/`delete[]` convertidas para `std::vector`
+- **atoll→strtol/strtoll**: validação de erro adicionada em `ssm_server.cc` e `ssm_cli.cc`
+- **C-casts→static_cast**: 6 ocorrências em `ssm_server.cc`
+- **volatile wipe→sodium_memzero**: `ssm_cli.cc` usa função segura
+- **Dead code removido**: `secrets_list` (apenas `secrets_list_for_user` usada)
+- **std::size**: `sizeof`/`sizeof` substituído em `migrations.cc`
+- **strdup→std::string**: `AuditLogTest` em `ssm_test.cc`
+- **sodium_init centralizado**: removido de 3 leaf functions, chamado uma vez em `ssm_init`
+- **Forward-declare types**: `export.h` evita incluir `ssm.h` inteiro
+- **std::array**: `migrations.h` substitui raw C array + count
+- **Benchmark checks**: `SkipWithError` adicionado em `bench_ssm.cc`
+
+#### 🏗️ Build & Infra (P3 — 3/3)
+- **Comentário CMake**: desatualizado sobre visibility
+- **PCH**: `<shared_mutex>` adicionado ao precompiled header
+- **Backup format breaking**: `timestamp` uint32→uint64, `BACKUP_VERSION` 1→2
+
+### ⚠️ Nota de Breaking Change
+- **Backup v1 incompatível**: backups criados com v0.3.0-beta ou anterior não podem ser restaurados nesta versão. Use v0.3.0-beta para restaurar backups antigos antes de atualizar.
+
+---
+
 ## [0.3.0-beta] — 2026-06-03
 
 ### 🎉 Adicionado

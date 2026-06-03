@@ -1,6 +1,6 @@
 # AGENTS.md — Vaultine
 
-**Projeto:** Biblioteca dinâmica C++ (.so) POSIX para gerenciamento criptográfico de segredos multi-tenant. v0.2.0-beta.
+**Projeto:** Biblioteca dinâmica C++ (.so) POSIX para gerenciamento criptográfico de segredos multi-tenant. v0.3.1-beta.
 
 ## Convenções
 
