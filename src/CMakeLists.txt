@@ -36,7 +36,6 @@ if(COMMAND target_precompile_headers)
         <cstddef>
         <cstring>
         <memory>
-        <mutex>
         <shared_mutex>
     )
 endif()

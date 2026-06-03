@@ -53,7 +53,7 @@ TEST_F(BackupTest, CreateBackupSuccess) {
     backup_header header;
     ASSERT_EQ(std::fread(&header, 1, sizeof(header), f), sizeof(header));
     EXPECT_EQ(std::memcmp(header.magic, "VAULTBKP", 8), 0);
-    EXPECT_EQ(header.version, 1);
+    EXPECT_EQ(header.version, BACKUP_VERSION);
 
     std::fseek(f, 0, SEEK_END);
     long file_size = std::ftell(f);

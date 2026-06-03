@@ -15,12 +15,14 @@ extern "C" {
 
 typedef struct ssm_handle ssm_handle;
 
-typedef enum {
-    SSM_OK = 0,
-    SSM_ERR_AUTH = 1,
-    SSM_ERR_NOT_FOUND = 2,
-    SSM_ERR_EXPIRED = 3,
-    SSM_ERR_INTEGRITY = 4,
+// Named + fixed underlying type for forward-declaration by private headers (e.g., export.h)
+#ifdef __cplusplus
+typedef enum ssm_status_e : int {
+#else
+typedef enum ssm_status_e {
+#endif
+    SSM_OK = 0, SSM_ERR_AUTH = 1, SSM_ERR_NOT_FOUND = 2,
+    SSM_ERR_EXPIRED = 3, SSM_ERR_INTEGRITY = 4,
     SSM_ERR_INTERNAL = 5
 } ssm_status;
 
@@ -87,7 +89,11 @@ SSM_EXPORT ssm_status ssm_backup_create(ssm_handle* h, const char* backup_path,
 SSM_EXPORT ssm_status ssm_backup_restore(ssm_handle* h, const char* backup_path,
                                          const unsigned char* backup_key, size_t backup_key_len);
 
-typedef enum {
+#ifdef __cplusplus
+typedef enum ssm_export_format_e : int {
+#else
+typedef enum ssm_export_format_e {
+#endif
     SSM_EXPORT_JSON = 0,
     SSM_EXPORT_CSV = 1
 } ssm_export_format;

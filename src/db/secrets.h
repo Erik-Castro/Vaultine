@@ -30,8 +30,6 @@ bool secrets_find(sqlite3* db, int64_t user_id, const char* name, secret_row* ou
 
 bool secrets_delete(sqlite3* db, int64_t user_id, const char* name);
 
-bool secrets_list(sqlite3* db, int64_t user_id, std::vector<secret_row>* out);
-
 bool secrets_list_for_user(sqlite3* db, int64_t user_id, std::vector<secret_row>* out);
 
 }  // namespace ssm::v1

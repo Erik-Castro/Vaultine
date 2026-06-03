@@ -10,9 +10,12 @@
 static void BM_UserRegister(benchmark::State& state) {
     for (auto _ : state) {
         ssm_handle* h = nullptr;
-        if (ssm_init(&h, ":memory:", nullptr, 0) != SSM_OK)
-            continue;
-        ssm_user_register(h, "alice", "password123");
+        if (ssm_init(&h, ":memory:", nullptr, 0) != SSM_OK) {
+            state.SkipWithError("ssm_init failed");
+            break;
+        }
+        if (ssm_user_register(h, "alice", "password123") != SSM_OK)
+            state.SkipWithError("ssm_user_register failed");
         ssm_destroy(h);
     }
 }
@@ -20,8 +23,15 @@ BENCHMARK(BM_UserRegister)->Unit(benchmark::kMillisecond);
 
 static void BM_UserAuthenticate(benchmark::State& state) {
     ssm_handle* h = nullptr;
-    ssm_init(&h, ":memory:", nullptr, 0);
-    ssm_user_register(h, "alice", "password123");
+    if (ssm_init(&h, ":memory:", nullptr, 0) != SSM_OK) {
+        state.SkipWithError("ssm_init failed");
+        return;
+    }
+    if (ssm_user_register(h, "alice", "password123") != SSM_OK) {
+        state.SkipWithError("ssm_user_register failed");
+        ssm_destroy(h);
+        return;
+    }
 
     for (auto _ : state) {
         int valid = 0;
@@ -33,8 +43,15 @@ BENCHMARK(BM_UserAuthenticate)->Unit(benchmark::kMillisecond);
 
 static void BM_SecretStore(benchmark::State& state) {
     ssm_handle* h = nullptr;
-    ssm_init(&h, ":memory:", nullptr, 0);
-    ssm_user_register(h, "alice", "password123");
+    if (ssm_init(&h, ":memory:", nullptr, 0) != SSM_OK) {
+        state.SkipWithError("ssm_init failed");
+        return;
+    }
+    if (ssm_user_register(h, "alice", "password123") != SSM_OK) {
+        state.SkipWithError("ssm_user_register failed");
+        ssm_destroy(h);
+        return;
+    }
 
     unsigned char key[32];
     std::memset(key, 'A', sizeof(key));
@@ -43,7 +60,8 @@ static void BM_SecretStore(benchmark::State& state) {
     for (auto _ : state) {
         char name[16];
         std::snprintf(name, sizeof(name), "key%d", i++);
-        ssm_secret_store(h, "alice", key, sizeof(key), nullptr, 0, name, nullptr);
+        if (ssm_secret_store(h, "alice", key, sizeof(key), nullptr, 0, name, nullptr) != SSM_OK)
+            state.SkipWithError("ssm_secret_store failed");
     }
     ssm_destroy(h);
 }
@@ -51,12 +69,23 @@ BENCHMARK(BM_SecretStore)->Unit(benchmark::kMillisecond);
 
 static void BM_CacheHit(benchmark::State& state) {
     ssm_handle* h = nullptr;
-    ssm_init(&h, ":memory:", nullptr, 0);
-    ssm_user_register(h, "alice", "password123");
+    if (ssm_init(&h, ":memory:", nullptr, 0) != SSM_OK) {
+        state.SkipWithError("ssm_init failed");
+        return;
+    }
+    if (ssm_user_register(h, "alice", "password123") != SSM_OK) {
+        state.SkipWithError("ssm_user_register failed");
+        ssm_destroy(h);
+        return;
+    }
 
     unsigned char key[32];
     std::memset(key, 'B', sizeof(key));
-    ssm_secret_store(h, "alice", key, sizeof(key), nullptr, 0, "mykey", nullptr);
+    if (ssm_secret_store(h, "alice", key, sizeof(key), nullptr, 0, "mykey", nullptr) != SSM_OK) {
+        state.SkipWithError("ssm_secret_store failed");
+        ssm_destroy(h);
+        return;
+    }
 
     unsigned char out[64];
     size_t len = sizeof(out);
@@ -69,8 +98,15 @@ BENCHMARK(BM_CacheHit)->Unit(benchmark::kMicrosecond);
 
 static void BM_CacheMiss(benchmark::State& state) {
     ssm_handle* h = nullptr;
-    ssm_init(&h, ":memory:", nullptr, 0);
-    ssm_user_register(h, "alice", "password123");
+    if (ssm_init(&h, ":memory:", nullptr, 0) != SSM_OK) {
+        state.SkipWithError("ssm_init failed");
+        return;
+    }
+    if (ssm_user_register(h, "alice", "password123") != SSM_OK) {
+        state.SkipWithError("ssm_user_register failed");
+        ssm_destroy(h);
+        return;
+    }
 
     unsigned char out[64];
     size_t len = sizeof(out);
@@ -84,9 +120,15 @@ BENCHMARK(BM_CacheMiss)->Unit(benchmark::kMicrosecond);
 static void BM_UserDelete(benchmark::State& state) {
     for (auto _ : state) {
         ssm_handle* h = nullptr;
-        if (ssm_init(&h, ":memory:", nullptr, 0) != SSM_OK)
-            continue;
-        ssm_user_register(h, "alice", "password123");
+        if (ssm_init(&h, ":memory:", nullptr, 0) != SSM_OK) {
+            state.SkipWithError("ssm_init failed");
+            break;
+        }
+        if (ssm_user_register(h, "alice", "password123") != SSM_OK) {
+            state.SkipWithError("ssm_user_register failed");
+            ssm_destroy(h);
+            break;
+        }
         ssm_user_delete(h, "alice", "password123");
         ssm_destroy(h);
     }
@@ -95,8 +137,15 @@ BENCHMARK(BM_UserDelete)->Unit(benchmark::kMillisecond);
 
 static void BM_KekRotate(benchmark::State& state) {
     ssm_handle* h = nullptr;
-    ssm_init(&h, ":memory:", nullptr, 0);
-    ssm_user_register(h, "alice", "password123");
+    if (ssm_init(&h, ":memory:", nullptr, 0) != SSM_OK) {
+        state.SkipWithError("ssm_init failed");
+        return;
+    }
+    if (ssm_user_register(h, "alice", "password123") != SSM_OK) {
+        state.SkipWithError("ssm_user_register failed");
+        ssm_destroy(h);
+        return;
+    }
 
     for (auto _ : state)
         ssm_kek_rotate(h, "alice");
@@ -106,15 +155,26 @@ BENCHMARK(BM_KekRotate)->Unit(benchmark::kMillisecond);
 
 static void BM_SecretList(benchmark::State& state) {
     ssm_handle* h = nullptr;
-    ssm_init(&h, ":memory:", nullptr, 0);
-    ssm_user_register(h, "alice", "password123");
+    if (ssm_init(&h, ":memory:", nullptr, 0) != SSM_OK) {
+        state.SkipWithError("ssm_init failed");
+        return;
+    }
+    if (ssm_user_register(h, "alice", "password123") != SSM_OK) {
+        state.SkipWithError("ssm_user_register failed");
+        ssm_destroy(h);
+        return;
+    }
 
     unsigned char key[32];
     std::memset(key, 'C', sizeof(key));
     for (int i = 0; i < 10; ++i) {
         char name[16];
         std::snprintf(name, sizeof(name), "key%d", i);
-        ssm_secret_store(h, "alice", key, sizeof(key), nullptr, 0, name, nullptr);
+        if (ssm_secret_store(h, "alice", key, sizeof(key), nullptr, 0, name, nullptr) != SSM_OK) {
+            state.SkipWithError("ssm_secret_store failed");
+            ssm_destroy(h);
+            return;
+        }
     }
 
     for (auto _ : state)
@@ -125,8 +185,15 @@ BENCHMARK(BM_SecretList)->Unit(benchmark::kMicrosecond);
 
 static void BM_ChangePassword(benchmark::State& state) {
     ssm_handle* h = nullptr;
-    ssm_init(&h, ":memory:", nullptr, 0);
-    ssm_user_register(h, "alice", "old_password");
+    if (ssm_init(&h, ":memory:", nullptr, 0) != SSM_OK) {
+        state.SkipWithError("ssm_init failed");
+        return;
+    }
+    if (ssm_user_register(h, "alice", "old_password") != SSM_OK) {
+        state.SkipWithError("ssm_user_register failed");
+        ssm_destroy(h);
+        return;
+    }
 
     for (auto _ : state) {
         ssm_user_change_password(h, "alice", "old_password", "new_password123");
@@ -138,8 +205,15 @@ BENCHMARK(BM_ChangePassword)->Unit(benchmark::kMillisecond);
 
 static void BM_ConcurrentReads(benchmark::State& state) {
     ssm_handle* h = nullptr;
-    ssm_init(&h, ":memory:", nullptr, 0);
-    ssm_user_register(h, "alice", "password123");
+    if (ssm_init(&h, ":memory:", nullptr, 0) != SSM_OK) {
+        state.SkipWithError("ssm_init failed");
+        return;
+    }
+    if (ssm_user_register(h, "alice", "password123") != SSM_OK) {
+        state.SkipWithError("ssm_user_register failed");
+        ssm_destroy(h);
+        return;
+    }
 
     unsigned char key[32];
     std::memset(key, 'D', sizeof(key));

@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include <sodium.h>
+
 #include "hex_utils.h"
 #include "ssm/ssm.h"
 #include "ssm_server.h"
@@ -40,18 +42,24 @@ static std::string g_password;
 
 static std::string read_password(const char* prompt) {
     if (!isatty(STDIN_FILENO)) {
-        char buf[4096];
-        if (!fgets(buf, sizeof(buf), stdin))
+        std::vector<char> buf(4096);
+        if (!fgets(buf.data(), static_cast<int>(buf.size()), stdin))
             die("failed to read password");
-        size_t len = std::strlen(buf);
-        if (len > 0 && buf[len - 1] == '\n')
+        size_t len = std::strlen(buf.data());
+        if (len > 0 && buf[len - 1] == '\n') {
             buf[len - 1] = '\0';
-        return std::string(buf);
+            --len;
+        }
+        std::string result(buf.data(), len);
+        sodium_memzero(buf.data(), buf.size());
+        return result;
     }
     char* pw = getpass(prompt);
     if (!pw)
         die("getpass failed");
-    return std::string(pw);
+    std::string result(pw);
+    sodium_memzero(pw, std::strlen(pw));
+    return result;
 }
 
 static std::string prompt_password(const char* username) {
@@ -318,34 +326,28 @@ static int handle_secret_store(int argc, char** argv) {
         fclose(fk);
         die("empty key file");
     }
-    auto* key_buf = new unsigned char[static_cast<size_t>(klen)];
-    if (std::fread(key_buf, 1, static_cast<size_t>(klen), fk) != static_cast<size_t>(klen)) {
+    std::vector<unsigned char> key_buf(static_cast<size_t>(klen));
+    if (std::fread(key_buf.data(), 1, key_buf.size(), fk) != key_buf.size()) {
         fclose(fk);
-        delete[] key_buf;
         die("fread key_file failed");
     }
     fclose(fk);
 
     // read optional public key
-    unsigned char* pub_buf = nullptr;
-    size_t pub_len = 0;
+    std::vector<unsigned char> pub_buf;
     if (pub_path) {
         FILE* fp = std::fopen(pub_path, "rb");
         if (!fp) {
             perror("fopen pub_file");
-            delete[] key_buf;
             return 1;
         }
         std::fseek(fp, 0, SEEK_END);
         long plen = std::ftell(fp);
         std::fseek(fp, 0, SEEK_SET);
         if (plen > 0) {
-            pub_buf = new unsigned char[static_cast<size_t>(plen)];
-            pub_len = static_cast<size_t>(plen);
-            if (std::fread(pub_buf, 1, pub_len, fp) != pub_len) {
+            pub_buf.resize(static_cast<size_t>(plen));
+            if (std::fread(pub_buf.data(), 1, pub_buf.size(), fp) != pub_buf.size()) {
                 fclose(fp);
-                delete[] key_buf;
-                delete[] pub_buf;
                 die("fread pub_file failed");
             }
         }
@@ -356,17 +358,13 @@ static int handle_secret_store(int argc, char** argv) {
 
     ssm_handle* h = nullptr;
     ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
-    if (st != SSM_OK) {
-        delete[] key_buf;
-        delete[] pub_buf;
+    if (st != SSM_OK)
         die_status(st, "ssm_init");
-    }
 
-    st = ssm_secret_store(h, username, key_buf, static_cast<size_t>(klen), pub_buf, pub_len, name,
-                          description);
+    st = ssm_secret_store(h, username, key_buf.data(), key_buf.size(), pub_buf.data(),
+                          pub_buf.size(), name, description);
+
     ssm_destroy(h);
-    delete[] key_buf;
-    delete[] pub_buf;
 
     if (st != SSM_OK)
         die_status(st, "secret store");
@@ -408,64 +406,56 @@ static int handle_secret_get(int argc, char** argv) {
         die_status(st, "ssm_init");
 
     // try with generous buffer, retry if needed
-    size_t priv_cap = 65536;
-    auto* priv = new unsigned char[priv_cap];
-    size_t priv_len = priv_cap;
-    size_t pub_cap = 65536;
-    auto* pub = new unsigned char[pub_cap];
-    size_t pub_len = pub_cap;
-
-    st = ssm_secret_get(h, username, name, priv, &priv_len, pub, &pub_len);
-    if (st == SSM_ERR_INTERNAL && priv_len > priv_cap) {
-        delete[] priv;
-        delete[] pub;
-        priv_cap = priv_len;
-        priv = new unsigned char[priv_cap];
-        priv_len = priv_cap;
-        pub_cap = pub_len;
-        pub = new unsigned char[pub_cap];
-        pub_len = pub_cap;
-        st = ssm_secret_get(h, username, name, priv, &priv_len, pub, &pub_len);
+    std::vector<unsigned char> priv;
+    std::vector<unsigned char> pub;
+    {
+        size_t priv_cap = 65536;
+        size_t pub_cap = 65536;
+        priv.resize(priv_cap);
+        pub.resize(pub_cap);
+        size_t priv_len = priv_cap;
+        size_t pub_len = pub_cap;
+        st = ssm_secret_get(h, username, name, priv.data(), &priv_len, pub.data(), &pub_len);
+        if (st == SSM_ERR_INTERNAL && priv_len > priv_cap) {
+            priv.resize(priv_len);
+            pub.resize(pub_len);
+            priv_len = priv.size();
+            pub_len = pub.size();
+            st = ssm_secret_get(h, username, name, priv.data(), &priv_len, pub.data(), &pub_len);
+        }
+        priv.resize(priv_len);
+        pub.resize(pub_len);
     }
     ssm_destroy(h);
 
-    if (st != SSM_OK) {
-        delete[] priv;
-        delete[] pub;
+    if (st != SSM_OK)
         die_status(st, "secret get");
-    }
 
     if (out_path) {
         FILE* f = std::fopen(out_path, "wb");
         if (!f) {
             perror("fopen --out");
-            delete[] priv;
-            delete[] pub;
             return 1;
         }
-        std::fwrite(priv, 1, priv_len, f);
+        std::fwrite(priv.data(), 1, priv.size(), f);
         std::fclose(f);
-        printf("OK: private key (%zu bytes) written to %s\n", priv_len, out_path);
+        printf("OK: private key (%zu bytes) written to %s\n", priv.size(), out_path);
     } else {
-        std::fwrite(priv, 1, priv_len, stdout);
+        std::fwrite(priv.data(), 1, priv.size(), stdout);
         std::fputc('\n', stdout);
     }
 
-    if (pub_out_path && pub_len > 0) {
+    if (pub_out_path && !pub.empty()) {
         FILE* f = std::fopen(pub_out_path, "wb");
         if (!f) {
             perror("fopen --pub-out");
-            delete[] priv;
-            delete[] pub;
             return 1;
         }
-        std::fwrite(pub, 1, pub_len, f);
+        std::fwrite(pub.data(), 1, pub.size(), f);
         std::fclose(f);
-        printf("OK: public key (%zu bytes) written to %s\n", pub_len, pub_out_path);
+        printf("OK: public key (%zu bytes) written to %s\n", pub.size(), pub_out_path);
     }
 
-    delete[] priv;
-    delete[] pub;
     return 0;
 }
 
@@ -613,10 +603,15 @@ static int handle_audit_log(int argc, char** argv) {
             operation = argv[++i];
         else if (std::strcmp(argv[i], "--result") == 0 && i + 1 < argc)
             result = argv[++i];
-        else if (std::strcmp(argv[i], "--limit") == 0 && i + 1 < argc)
-            limit = std::atoll(argv[++i]);
-        else if (std::strcmp(argv[i], "--offset") == 0 && i + 1 < argc)
-            offset = std::atoll(argv[++i]);
+        else if (std::strcmp(argv[i], "--limit") == 0 && i + 1 < argc) {
+            char* end = nullptr;
+            long long v = std::strtoll(argv[++i], &end, 10);
+            if (end != argv[i] && v >= 0) limit = v;
+        } else if (std::strcmp(argv[i], "--offset") == 0 && i + 1 < argc) {
+            char* end = nullptr;
+            long long v = std::strtoll(argv[++i], &end, 10);
+            if (end != argv[i] && v >= 0) offset = v;
+        }
     }
 
     ssm_handle* h = nullptr;
@@ -860,43 +855,40 @@ static int handle_env_exec(int argc, char** argv) {
     for (auto& item : names) {
         item.env_name = sanitize_env_name(item.name.c_str());
 
-        size_t priv_cap = 65536;
-        auto* priv = new unsigned char[priv_cap];
-        size_t priv_len = priv_cap;
-        size_t pub_len = 0;
-        st = ssm_secret_get(h, username, item.name.c_str(), priv, &priv_len, nullptr, &pub_len);
-        if (st == SSM_ERR_INTERNAL && priv_len > priv_cap) {
-            delete[] priv;
-            priv_cap = priv_len;
-            priv = new unsigned char[priv_cap];
-            priv_len = priv_cap;
-            st = ssm_secret_get(h, username, item.name.c_str(), priv, &priv_len, nullptr, &pub_len);
+        std::vector<unsigned char> priv;
+        {
+            size_t priv_cap = 65536;
+            size_t priv_len = priv_cap;
+            size_t pub_len = 0;
+            priv.resize(priv_cap);
+            st = ssm_secret_get(h, username, item.name.c_str(), priv.data(), &priv_len, nullptr,
+                                &pub_len);
+            if (st == SSM_ERR_INTERNAL && priv_len > priv_cap) {
+                priv.resize(priv_len);
+                priv_len = priv.size();
+                st = ssm_secret_get(h, username, item.name.c_str(), priv.data(), &priv_len, nullptr,
+                                    &pub_len);
+            }
+            priv.resize(priv_len);
         }
         if (st != SSM_OK) {
-            delete[] priv;
             fprintf(stderr, "warning: skipping '%s': %s\n", item.name.c_str(),
                     ssm_status_to_string(st));
             continue;
         }
 
         std::string val;
-        if (is_printable(priv, priv_len)) {
-            val.assign(reinterpret_cast<const char*>(priv), priv_len);
+        if (is_printable(priv.data(), priv.size())) {
+            val.assign(reinterpret_cast<const char*>(priv.data()), priv.size());
             setenv(item.env_name.c_str(), val.c_str(), 1);
         } else {
-            val = base64_encode(priv, priv_len);
+            val = base64_encode(priv.data(), priv.size());
             setenv(item.env_name.c_str(), val.c_str(), 1);
             std::string enc_name = item.env_name + "_ENC";
             setenv(enc_name.c_str(), "base64", 1);
         }
 
-        // wipe secret from memory
-        if (priv_len > 0) {
-            volatile unsigned char* p = priv;
-            for (size_t i = 0; i < priv_len; ++i)
-                p[i] = 0;
-        }
-        delete[] priv;
+        sodium_memzero(priv.data(), priv.size());
     }
 
     ssm_destroy(h);

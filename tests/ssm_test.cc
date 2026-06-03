@@ -647,12 +647,12 @@ static bool audit_has_target(const char* path, const char* operation, const char
 class AuditLogTest : public ::testing::Test {
 protected:
     ssm_handle* handle_ = nullptr;
-    const char* path_ = nullptr;
+    std::string path_;
 
     void SetUp() override {
-        path_ = strdup(audit_path().c_str());
-        ::remove(path_);
-        ASSERT_EQ(ssm_init(&handle_, path_, nullptr, 0), SSM_OK);
+        path_ = audit_path();
+        ::remove(path_.c_str());
+        ASSERT_EQ(ssm_init(&handle_, path_.c_str(), nullptr, 0), SSM_OK);
         ASSERT_NE(handle_, nullptr);
     }
 
@@ -661,28 +661,27 @@ protected:
             ssm_destroy(handle_);
             handle_ = nullptr;
         }
-        ::remove(path_);
-        std::free(const_cast<char*>(path_));
+        ::remove(path_.c_str());
     }
 };
 
 TEST_F(AuditLogTest, RegisterCreatesAuditRecord) {
     ASSERT_EQ(ssm_user_register(handle_, "audit_user", "p@ssw0rd"), SSM_OK);
-    EXPECT_EQ(audit_count(path_, "user_register", "SSM_OK"), 1);
+    EXPECT_EQ(audit_count(path_.c_str(), "user_register", "SSM_OK"), 1);
 }
 
 TEST_F(AuditLogTest, RegisterDuplicateHasDetails) {
     ASSERT_EQ(ssm_user_register(handle_, "dup", "p@ssw0rd"), SSM_OK);
     // Second register must not reveal user exists (SDD)
     ASSERT_EQ(ssm_user_register(handle_, "dup", "p@ssw0rd"), SSM_OK);
-    EXPECT_TRUE(audit_has_details(path_, "user_register", "SSM_OK",
+    EXPECT_TRUE(audit_has_details(path_.c_str(), "user_register", "SSM_OK",
                                   "{\"status\":\"ok\"}"));
 }
 
 TEST_F(AuditLogTest, AuthUnknownUserHasDetails) {
     int valid = 1;
     ssm_user_authenticate(handle_, "ghost", "x", &valid);
-    EXPECT_TRUE(audit_has_details(path_, "user_authenticate", "SSM_ERR_AUTH",
+    EXPECT_TRUE(audit_has_details(path_.c_str(), "user_authenticate", "SSM_ERR_AUTH",
                                   "{\"error\":\"user not found\"}"));
 }
 
@@ -690,7 +689,7 @@ TEST_F(AuditLogTest, AuthWrongPasswordHasDetails) {
     ASSERT_EQ(ssm_user_register(handle_, "alice", "correct"), SSM_OK);
     int valid = 1;
     ssm_user_authenticate(handle_, "alice", "wrong", &valid);
-    EXPECT_TRUE(audit_has_details(path_, "user_authenticate", "SSM_ERR_AUTH",
+    EXPECT_TRUE(audit_has_details(path_.c_str(), "user_authenticate", "SSM_ERR_AUTH",
                                   "{\"error\":\"password mismatch\"}"));
 }
 
@@ -699,8 +698,8 @@ TEST_F(AuditLogTest, SecretStoreHasTargetAndDetails) {
     const unsigned char priv[] = "test-key-data-here-32bytes!!";
     ASSERT_EQ(ssm_secret_store(handle_, "bob", priv, sizeof(priv), nullptr, 0, "mykey", nullptr),
               SSM_OK);
-    EXPECT_EQ(audit_count(path_, "secret_store", "SSM_OK"), 1);
-    EXPECT_TRUE(audit_has_target(path_, "secret_store", "SSM_OK", "mykey"));
+    EXPECT_EQ(audit_count(path_.c_str(), "secret_store", "SSM_OK"), 1);
+    EXPECT_TRUE(audit_has_target(path_.c_str(), "secret_store", "SSM_OK", "mykey"));
 }
 
 TEST_F(AuditLogTest, SecretGetHasTargetAndDetails) {
@@ -712,7 +711,7 @@ TEST_F(AuditLogTest, SecretGetHasTargetAndDetails) {
     unsigned char out[64] = {};
     size_t len = sizeof(out);
     ASSERT_EQ(ssm_secret_get(handle_, "carol", "target-key", out, &len, nullptr, nullptr), SSM_OK);
-    EXPECT_TRUE(audit_has_target(path_, "secret_get", "SSM_OK", "target-key"));
+    EXPECT_TRUE(audit_has_target(path_.c_str(), "secret_get", "SSM_OK", "target-key"));
 }
 
 TEST_F(AuditLogTest, SecretDeleteHasTargetAndDetails) {
@@ -721,7 +720,7 @@ TEST_F(AuditLogTest, SecretDeleteHasTargetAndDetails) {
     ASSERT_EQ(ssm_secret_store(handle_, "dave", priv, sizeof(priv), nullptr, 0, "del-key", nullptr),
               SSM_OK);
     ASSERT_EQ(ssm_secret_delete(handle_, "dave", "del-key"), SSM_OK);
-    EXPECT_TRUE(audit_has_target(path_, "secret_delete", "SSM_OK", "del-key"));
+    EXPECT_TRUE(audit_has_target(path_.c_str(), "secret_delete", "SSM_OK", "del-key"));
 }
 
 TEST_F(AuditLogTest, ExpiredKekLogsTargetAndDetails) {
@@ -735,52 +734,52 @@ TEST_F(AuditLogTest, ExpiredKekLogsTargetAndDetails) {
     handle_ = nullptr;
     {
         sqlite3* raw = nullptr;
-        ASSERT_TRUE(db_open(path_, nullptr, 0, &raw));
+        ASSERT_TRUE(db_open(path_.c_str(), nullptr, 0, &raw));
         sqlite3_exec(raw, "UPDATE kek_metadata SET expires_at = '2020-01-01T00:00:00Z'", nullptr,
                      nullptr, nullptr);
         db_close(raw);
     }
-    ASSERT_EQ(ssm_init(&handle_, path_, nullptr, 0), SSM_OK);
+    ASSERT_EQ(ssm_init(&handle_, path_.c_str(), nullptr, 0), SSM_OK);
     unsigned char buf[64] = {};
     size_t blen = sizeof(buf);
     ASSERT_EQ(ssm_secret_get(handle_, "eve", "exp-key", buf, &blen, nullptr, nullptr),
               SSM_ERR_EXPIRED);
 
-    EXPECT_TRUE(audit_has_target(path_, "secret_get", "SSM_ERR_EXPIRED", "exp-key"));
+    EXPECT_TRUE(audit_has_target(path_.c_str(), "secret_get", "SSM_ERR_EXPIRED", "exp-key"));
     EXPECT_TRUE(
-        audit_has_details(path_, "secret_get", "SSM_ERR_EXPIRED", "{\"error\":\"KEK expired\"}"));
+        audit_has_details(path_.c_str(), "secret_get", "SSM_ERR_EXPIRED", "{\"error\":\"KEK expired\"}"));
 }
 
 TEST_F(AuditLogTest, UserDeleteRecordsResult) {
     ASSERT_EQ(ssm_user_register(handle_, "frank", "p@ss"), SSM_OK);
     ASSERT_EQ(ssm_user_delete(handle_, "frank", "p@ss"), SSM_OK);
-    EXPECT_EQ(audit_count(path_, "user_delete", "SSM_OK"), 1);
+    EXPECT_EQ(audit_count(path_.c_str(), "user_delete", "SSM_OK"), 1);
 }
 
 TEST_F(AuditLogTest, UserDeleteWrongPasswordHasDetails) {
     ASSERT_EQ(ssm_user_register(handle_, "grace", "correct"), SSM_OK);
     ASSERT_EQ(ssm_user_delete(handle_, "grace", "wrong"), SSM_ERR_AUTH);
-    EXPECT_TRUE(audit_has_details(path_, "user_delete", "SSM_ERR_AUTH",
+    EXPECT_TRUE(audit_has_details(path_.c_str(), "user_delete", "SSM_ERR_AUTH",
                                   "{\"error\":\"password mismatch\"}"));
 }
 
 TEST_F(AuditLogTest, KekRotateRecordsSuccess) {
     ASSERT_EQ(ssm_user_register(handle_, "heidi", "p@ss"), SSM_OK);
     ASSERT_EQ(ssm_kek_rotate(handle_, "heidi"), SSM_OK);
-    EXPECT_EQ(audit_count(path_, "kek_rotate", "SSM_OK"), 1);
+    EXPECT_EQ(audit_count(path_.c_str(), "kek_rotate", "SSM_OK"), 1);
 }
 
 TEST_F(AuditLogTest, ChangePasswordRecordsResult) {
     ASSERT_EQ(ssm_user_register(handle_, "ivan", "oldpass"), SSM_OK);
     ASSERT_EQ(ssm_user_change_password(handle_, "ivan", "oldpass", "newpass123"), SSM_OK);
-    EXPECT_EQ(audit_count(path_, "user_change_password", "SSM_OK"), 1);
+    EXPECT_EQ(audit_count(path_.c_str(), "user_change_password", "SSM_OK"), 1);
 }
 
 TEST_F(AuditLogTest, SecretListRecordsResult) {
     ASSERT_EQ(ssm_user_register(handle_, "judy", "p@ss"), SSM_OK);
     auto cb = [](const char*, const char*, const char*, size_t, void*) {};
     ASSERT_EQ(ssm_secret_list(handle_, "judy", cb, nullptr), SSM_OK);
-    EXPECT_EQ(audit_count(path_, "secret_list", "SSM_OK"), 1);
+    EXPECT_EQ(audit_count(path_.c_str(), "secret_list", "SSM_OK"), 1);
 }
 
 // ── Audit log query ──────────────────────────────────────────────

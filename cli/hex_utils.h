@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <vector>
 
 inline int hex_val(char c) {
     if (c >= '0' && c <= '9')
@@ -32,21 +33,19 @@ inline bool hex_decode(const char* hex, unsigned char* out, size_t* out_len,
     return true;
 }
 
-inline bool hex_decode(const char* hex, size_t hex_len, unsigned char** out,
-                       size_t* out_len) {
+inline bool hex_decode(const char* hex, size_t hex_len, std::vector<unsigned char>& out) {
     if (hex_len % 2 != 0 || hex_len == 0)
         return false;
-    *out_len = hex_len / 2;
-    *out = new unsigned char[*out_len];
-    for (size_t i = 0; i < *out_len; ++i) {
+    size_t out_len = hex_len / 2;
+    out.resize(out_len);
+    for (size_t i = 0; i < out_len; ++i) {
         int hi = hex_val(hex[i * 2]);
         int lo = hex_val(hex[i * 2 + 1]);
         if (hi < 0 || lo < 0) {
-            delete[] * out;
-            *out = nullptr;
+            out.clear();
             return false;
         }
-        (*out)[i] = static_cast<unsigned char>((hi << 4) | lo);
+        out[i] = static_cast<unsigned char>((hi << 4) | lo);
     }
     return true;
 }

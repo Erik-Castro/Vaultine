@@ -10,15 +10,15 @@ static constexpr size_t BACKUP_HEADER_LEN = 32;
 static constexpr size_t BACKUP_NONCE_LEN = 12;
 static constexpr size_t BACKUP_TAG_LEN = 16;
 static constexpr size_t BACKUP_HMAC_LEN = 32;
-static constexpr uint16_t BACKUP_VERSION = 1;
+static constexpr uint16_t BACKUP_VERSION = 2;
 
 #pragma pack(push, 1)
 struct backup_header {
     char magic[BACKUP_MAGIC_LEN];
     uint16_t version;
-    uint32_t timestamp;
+    uint64_t timestamp;
     unsigned char nonce[BACKUP_NONCE_LEN];
-    unsigned char reserved[6];
+    unsigned char reserved[2];
 };
 #pragma pack(pop)
 

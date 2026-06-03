@@ -24,9 +24,6 @@ bool kek_derive_wrapping_key(const unsigned char* auth_hash, size_t auth_hash_le
     if (wrapping_key_len != KEK_KEY_LEN)
         return false;
 
-    if (sodium_init() < 0)
-        return false;
-
     return crypto_pwhash(wrapping_key_out, wrapping_key_len,
                          reinterpret_cast<const char*>(auth_hash), auth_hash_len, salt,
                          crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE,
@@ -136,8 +133,6 @@ bool kek_rotate(sqlite3* db, int64_t user_id, const unsigned char* auth_hash,
     if (!db || !auth_hash)
         return false;
 
-    sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
-
     secure_buffer<unsigned char> wrapping_key(KEK_KEY_LEN);
     secure_buffer<unsigned char> new_kek(KEK_KEY_LEN);
     secure_buffer<unsigned char> new_wrapping_key(KEK_KEY_LEN);
@@ -152,6 +147,7 @@ bool kek_rotate(sqlite3* db, int64_t user_id, const unsigned char* auth_hash,
 
     bool ok = false;
     do {
+        sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
         // --- load current KEK ---
         kek_row old_kek;
         if (!kek_find_by_user(db, user_id, &old_kek))
@@ -183,10 +179,32 @@ bool kek_rotate(sqlite3* db, int64_t user_id, const unsigned char* auth_hash,
         if (!kek_expires_at(KEK_DEFAULT_DAYS, new_expires, sizeof(new_expires)))
             break;
 
+        // --- pre-allocate buffers (max size across all secrets) ---
+        size_t max_priv_len = 0;
+        for (auto& secret : secrets) {
+            if (secret.private_key.size() > max_priv_len)
+                max_priv_len = secret.private_key.size();
+        }
+        secure_vector<unsigned char> plain_priv(max_priv_len);
+        secure_vector<unsigned char> new_priv(max_priv_len);
+
+        const char* sql =
+            "UPDATE secrets SET private_key = ?, public_key = ?, "
+            "nonce = ?, tag = ?, "
+            "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+            "WHERE id = ?";
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+            break;
+
         // --- re-encrypt each secret ---
         bool rotation_ok = true;
         for (auto& secret : secrets) {
-            secure_vector<unsigned char> plain_priv(secret.private_key.size());
+            if (secret.private_key.size() > max_priv_len) {
+                rotation_ok = false;
+                break;
+            }
+
             if (!aes_gcm_decrypt(secret.private_key.data(), secret.private_key.size(),
                                  old_kek_raw.data(), old_kek_len, secret.nonce.data(),
                                  secret.nonce.size(), nullptr, 0, secret.tag.data(),
@@ -199,47 +217,31 @@ bool kek_rotate(sqlite3* db, int64_t user_id, const unsigned char* auth_hash,
             unsigned char new_priv_tag[AES_GCM_TAG_LEN];
             random_bytes(new_nonce, sizeof(new_nonce));
 
-            secure_vector<unsigned char> new_priv(plain_priv.size());
-            if (!aes_gcm_encrypt(plain_priv.data(), plain_priv.size(), new_kek.data(),
+            if (!aes_gcm_encrypt(plain_priv.data(), secret.private_key.size(), new_kek.data(),
                                  new_kek.size(), new_nonce, sizeof(new_nonce), nullptr, 0,
                                  new_priv.data(), new_priv_tag, sizeof(new_priv_tag))) {
                 rotation_ok = false;
                 break;
             }
 
-            const char* sql =
-                "UPDATE secrets SET private_key = ?, public_key = ?, "
-                "nonce = ?, tag = ?, "
-                "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
-                "WHERE id = ?";
-            sqlite3_stmt* stmt = nullptr;
-            if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-                rotation_ok = false;
-                break;
-            }
-
-            bool step_ok = false;
-            do {
-                sqlite3_bind_blob(stmt, 1, new_priv.data(), static_cast<int>(new_priv.size()),
-                                  SQLITE_TRANSIENT);
-                if (!secret.public_key.empty())
-                    sqlite3_bind_blob(stmt, 2, secret.public_key.data(),
-                                      static_cast<int>(secret.public_key.size()), SQLITE_TRANSIENT);
-                else
-                    sqlite3_bind_null(stmt, 2);
-                sqlite3_bind_blob(stmt, 3, new_nonce, sizeof(new_nonce), SQLITE_TRANSIENT);
-                sqlite3_bind_blob(stmt, 4, new_priv_tag, sizeof(new_priv_tag), SQLITE_TRANSIENT);
-                sqlite3_bind_int64(stmt, 5, secret.id);
-                if (sqlite3_step(stmt) == SQLITE_DONE)
-                    step_ok = true;
-            } while (false);
-
-            sqlite3_finalize(stmt);
-            if (!step_ok) {
+            sqlite3_reset(stmt);
+            sqlite3_bind_blob(stmt, 1, new_priv.data(),
+                              static_cast<int>(secret.private_key.size()), SQLITE_TRANSIENT);
+            if (!secret.public_key.empty())
+                sqlite3_bind_blob(stmt, 2, secret.public_key.data(),
+                                  static_cast<int>(secret.public_key.size()), SQLITE_TRANSIENT);
+            else
+                sqlite3_bind_null(stmt, 2);
+            sqlite3_bind_blob(stmt, 3, new_nonce, sizeof(new_nonce), SQLITE_TRANSIENT);
+            sqlite3_bind_blob(stmt, 4, new_priv_tag, sizeof(new_priv_tag), SQLITE_TRANSIENT);
+            sqlite3_bind_int64(stmt, 5, secret.id);
+            if (sqlite3_step(stmt) != SQLITE_DONE) {
                 rotation_ok = false;
                 break;
             }
         }
+
+        sqlite3_finalize(stmt);
 
         if (!rotation_ok)
             break;

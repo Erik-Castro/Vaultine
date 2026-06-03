@@ -9,8 +9,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
+
+#include <sodium.h>
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -95,7 +98,7 @@ static bool parse_body(struct evhttp_request* req, Json::Value& out) {
 
     Json::CharReaderBuilder r;
     std::string errs;
-    auto reader = r.newCharReader();
+    auto reader = std::unique_ptr<Json::CharReader>(r.newCharReader());
     return reader->parse(data.data(), data.data() + len, &out, &errs);
 }
 
@@ -114,25 +117,28 @@ static RouteMatch match_user_route(const char* uri,
     // Expected: /v1/users/<username>[/<resource>]
     // Skip leading /
     while (*uri == '/') ++uri;
-    std::string s(uri);
+    std::string_view s(uri);
 
     // Split by /
-    std::vector<std::string> parts;
-    size_t pos = 0;
-    while ((pos = s.find('/')) != std::string::npos) {
-        parts.push_back(s.substr(0, pos));
-        s.erase(0, pos + 1);
+    std::vector<std::string_view> parts;
+    while (!s.empty()) {
+        auto slash = s.find('/');
+        if (slash == std::string_view::npos) {
+            parts.push_back(s);
+            break;
+        }
+        parts.push_back(s.substr(0, slash));
+        s.remove_prefix(slash + 1);
     }
-    if (!s.empty()) parts.push_back(s);
 
     // Check: v1 / users / <username> [/ <resource>]
     if (parts.size() < 3) return m;
     if (parts[0] != "v1") return m;
     if (parts[1] != "users") return m;
 
-    m.username = parts[2];
-    if (parts.size() >= 4) m.resource = parts[3];
-    if (parts.size() >= 5) m.resource += "/" + parts[4]; // for secrets/:name
+    m.username = std::string(parts[2]);
+    if (parts.size() >= 4) m.resource = std::string(parts[3]);
+    if (parts.size() >= 5) { m.resource += "/"; m.resource += parts[4]; }
     m.matched = true;
 
     if (require_resource && m.resource.empty())
@@ -265,7 +271,7 @@ static void handle_secret_list_req(struct evhttp_request* req, const RouteMatch&
         item["name"] = ctx.names[i];
         if (!ctx.descs[i].empty()) item["description"] = ctx.descs[i];
         item["updatedAt"] = ctx.updateds[i];
-        item["pubKeyLen"] = (Json::UInt64)ctx.pub_lens[i];
+        item["pubKeyLen"] = static_cast<Json::UInt64>(ctx.pub_lens[i]);
         arr.append(item);
     }
     reply_ok(req, arr);
@@ -286,28 +292,23 @@ static void handle_secret_store_req(struct evhttp_request* req, const RouteMatch
     std::string desc = body.get("description", "").asString();
 
     // Decode hex keys
-    unsigned char* priv_bytes = nullptr;
-    size_t priv_len = 0;
-    if (!hex_decode(priv_hex.c_str(), priv_hex.size(), &priv_bytes, &priv_len)) {
+    std::vector<unsigned char> priv_bytes;
+    if (!hex_decode(priv_hex.c_str(), priv_hex.size(), priv_bytes)) {
         reply_error(req, HTTP_BADREQUEST, "private_key: invalid hex");
         return;
     }
-    unsigned char* pub_bytes = nullptr;
-    size_t pub_len = 0;
+    std::vector<unsigned char> pub_bytes;
     if (!pub_hex.empty() &&
-        !hex_decode(pub_hex.c_str(), pub_hex.size(), &pub_bytes, &pub_len)) {
-        delete[] priv_bytes;
+        !hex_decode(pub_hex.c_str(), pub_hex.size(), pub_bytes)) {
         reply_error(req, HTTP_BADREQUEST, "public_key: invalid hex");
         return;
     }
 
     ssm_status st = ssm_secret_store(g_h, m.username.c_str(),
-                                     priv_bytes, priv_len,
-                                     pub_bytes, pub_len,
+                                     priv_bytes.data(), priv_bytes.size(),
+                                     pub_bytes.data(), pub_bytes.size(),
                                      name.c_str(),
                                      desc.empty() ? nullptr : desc.c_str());
-    delete[] priv_bytes;
-    delete[] pub_bytes;
 
     if (st != SSM_OK) {
         reply_status(req, HTTP_BADREQUEST, "secret_store", st);
@@ -331,30 +332,17 @@ static void handle_secret_get_req(struct evhttp_request* req, const RouteMatch& 
         return;
     }
 
-    unsigned char priv_buf[65536], pub_buf[65536];
-    size_t priv_len = sizeof(priv_buf), pub_len = sizeof(pub_buf);
+    std::vector<unsigned char> priv_buf(65536);
+    std::vector<unsigned char> pub_buf(65536);
+    size_t priv_len = priv_buf.size();
+    size_t pub_len = pub_buf.size();
     ssm_status st = ssm_secret_get(g_h, m.username.c_str(), secret_name.c_str(),
-                                   priv_buf, &priv_len, pub_buf, &pub_len);
-    if (st == SSM_ERR_INTERNAL && priv_len > sizeof(priv_buf)) {
-        // Retry with correct size — need dynamic allocation
-        size_t new_priv_len = priv_len;
-        size_t new_pub_len = pub_len;
-        auto* new_priv = new unsigned char[new_priv_len];
-        auto* new_pub = new unsigned char[new_pub_len];
+                                   priv_buf.data(), &priv_len, pub_buf.data(), &pub_len);
+    if (st == SSM_ERR_INTERNAL && priv_len > priv_buf.size()) {
+        priv_buf.resize(priv_len);
+        pub_buf.resize(pub_len);
         st = ssm_secret_get(g_h, m.username.c_str(), secret_name.c_str(),
-                            new_priv, &new_priv_len, new_pub, &new_pub_len);
-        if (st == SSM_OK) {
-            Json::Value v;
-            v["private_key"] = hex_encode(new_priv, new_priv_len);
-            if (new_pub_len > 0)
-                v["public_key"] = hex_encode(new_pub, new_pub_len);
-            delete[] new_priv;
-            delete[] new_pub;
-            reply_ok(req, v);
-            return;
-        }
-        delete[] new_priv;
-        delete[] new_pub;
+                            priv_buf.data(), &priv_len, pub_buf.data(), &pub_len);
     }
 
     if (st != SSM_OK) {
@@ -364,9 +352,9 @@ static void handle_secret_get_req(struct evhttp_request* req, const RouteMatch& 
     }
 
     Json::Value v;
-    v["private_key"] = hex_encode(priv_buf, priv_len);
+    v["private_key"] = hex_encode(priv_buf.data(), priv_len);
     if (pub_len > 0)
-        v["public_key"] = hex_encode(pub_buf, pub_len);
+        v["public_key"] = hex_encode(pub_buf.data(), pub_len);
     reply_ok(req, v);
 }
 
@@ -418,10 +406,12 @@ static void handle_backup_create_req(struct evhttp_request* req) {
     unsigned char key[32];
     size_t key_len = 0;
     if (!hex_decode(body["key_hex"].asCString(), key, &key_len) || key_len != 32) {
+        sodium_memzero(key, sizeof(key));
         reply_error(req, HTTP_BADREQUEST, "key_hex must be 64 hex chars (32 bytes)");
         return;
     }
     ssm_status st = ssm_backup_create(g_h, path.c_str(), key, key_len);
+    sodium_memzero(key, sizeof(key));
     if (st != SSM_OK) {
         reply_status(req, HTTP_INTERNAL, "backup_create", st);
         return;
@@ -441,10 +431,12 @@ static void handle_backup_restore_req(struct evhttp_request* req) {
     unsigned char key[32];
     size_t key_len = 0;
     if (!hex_decode(body["key_hex"].asCString(), key, &key_len) || key_len != 32) {
+        sodium_memzero(key, sizeof(key));
         reply_error(req, HTTP_BADREQUEST, "key_hex must be 64 hex chars (32 bytes)");
         return;
     }
     ssm_status st = ssm_backup_restore(g_h, path.c_str(), key, key_len);
+    sodium_memzero(key, sizeof(key));
     if (st != SSM_OK) {
         reply_status(req, HTTP_INTERNAL, "backup_restore", st);
         return;
@@ -491,10 +483,10 @@ static void handle_cache_stats_req(struct evhttp_request* req) {
         return;
     }
     Json::Value v;
-    v["totalEntries"] = (Json::UInt64)stats.total_entries;
-    v["validEntries"] = (Json::UInt64)stats.valid_entries;
-    v["hitCount"] = (Json::UInt64)stats.hit_count;
-    v["missCount"] = (Json::UInt64)stats.miss_count;
+    v["totalEntries"] = static_cast<Json::UInt64>(stats.total_entries);
+    v["validEntries"] = static_cast<Json::UInt64>(stats.valid_entries);
+    v["hitCount"] = static_cast<Json::UInt64>(stats.hit_count);
+    v["missCount"] = static_cast<Json::UInt64>(stats.miss_count);
     reply_ok(req, v);
 }
 
@@ -514,8 +506,16 @@ static void handle_audit_log_req(struct evhttp_request* req) {
                                                 "X-Audit-Offset");
 
     int64_t limit = 100, offset = 0;
-    if (limit_str) limit = std::atol(limit_str);
-    if (offset_str) offset = std::atol(offset_str);
+    if (limit_str) {
+        char* end = nullptr;
+        long v = std::strtol(limit_str, &end, 10);
+        if (end != limit_str && v >= 0) limit = v;
+    }
+    if (offset_str) {
+        char* end = nullptr;
+        long v = std::strtol(offset_str, &end, 10);
+        if (end != offset_str && v >= 0) offset = v;
+    }
 
     struct AuditCtx {
         std::vector<int64_t> ids, user_ids;
@@ -552,8 +552,8 @@ static void handle_audit_log_req(struct evhttp_request* req) {
     Json::Value arr(Json::arrayValue);
     for (size_t i = 0; i < ctx.ids.size(); ++i) {
         Json::Value item;
-        item["id"] = (Json::Int64)ctx.ids[i];
-        item["userId"] = (Json::Int64)ctx.user_ids[i];
+        item["id"] = static_cast<Json::Int64>(ctx.ids[i]);
+        item["userId"] = static_cast<Json::Int64>(ctx.user_ids[i]);
         item["username"] = ctx.usernames[i];
         item["operation"] = ctx.operations[i];
         item["operationTarget"] = ctx.targets[i];
@@ -585,7 +585,7 @@ static void handle_export_req(struct evhttp_request* req) {
         c->data.insert(c->data.end(), chunk, chunk + len);
     };
 
-    ssm_status st = ssm_export(g_h, (ssm_export_format)format, redact_pii, cb, &ctx);
+    ssm_status st = ssm_export(g_h, static_cast<ssm_export_format>(format), redact_pii, cb, &ctx);
     if (st != SSM_OK) {
         reply_status(req, HTTP_INTERNAL, "export", st);
         return;
@@ -826,7 +826,7 @@ int handle_server_start(int argc, char** argv) {
     fprintf(stderr, "%s: server starting on %s:%d\n", g_prog, host, port);
 
     if (pidfile && pidfile[0])
-        std::strncpy(g_pidfile, pidfile, sizeof(g_pidfile) - 1);
+        std::snprintf(g_pidfile, sizeof(g_pidfile), "%s", pidfile);
 
     if (do_daemonize) {
         fprintf(stderr, "%s: daemonizing...\n", g_prog);

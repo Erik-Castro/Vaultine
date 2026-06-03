@@ -20,6 +20,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     auto consume_segment = [&]() -> std::vector<char> {
         if (pos >= size)
             return {};
+        if (pos + 1 > size)
+            return {};
         uint8_t len = data[pos++];
         size_t avail = size - pos;
         if (len > avail)

@@ -148,6 +148,9 @@ ssm_status ssm_init(ssm_handle** out, const char* db_path, const unsigned char* 
     if (!out)
         return SSM_ERR_INTERNAL;
 
+    if (sodium_init() < 0)
+        return SSM_ERR_INTERNAL;
+
     sqlite3* db = nullptr;
     if (!db_open(db_path, db_key, db_key_len, &db))
         return SSM_ERR_INTERNAL;
@@ -229,7 +232,7 @@ ssm_status ssm_user_register(ssm_handle* h, const char* username, const char* pa
     size_t hash_len = crypto_pwhash_STRBYTES;
     secure_vector<unsigned char> hash(hash_len);
 
-    if (!argon2id_hash(reinterpret_cast<const unsigned char*>(password), pw_len, nullptr, 0,
+    if (!argon2id_hash(reinterpret_cast<const unsigned char*>(password), pw_len,
                        hash.data(), hash.size()))
         return SSM_ERR_INTERNAL;
 
@@ -579,7 +582,7 @@ ssm_status ssm_user_change_password(ssm_handle* h, const char* username, const c
     size_t new_hash_len = crypto_pwhash_STRBYTES;
     secure_vector<unsigned char> new_hash(new_hash_len);
     size_t new_pw_len = std::strlen(new_password);
-    if (!argon2id_hash(reinterpret_cast<const unsigned char*>(new_password), new_pw_len, nullptr, 0,
+    if (!argon2id_hash(reinterpret_cast<const unsigned char*>(new_password), new_pw_len,
                        new_hash.data(), new_hash.size()))
         return SSM_ERR_INTERNAL;
 

@@ -145,10 +145,6 @@ bool secrets_delete(sqlite3* db, int64_t user_id, const char* name) {
     return ok;
 }
 
-bool secrets_list(sqlite3* db, int64_t user_id, std::vector<secret_row>* out) {
-    return secrets_list_for_user(db, user_id, out);
-}
-
 bool secrets_list_for_user(sqlite3* db, int64_t user_id, std::vector<secret_row>* out) {
     if (!db || !out)
         return false;
@@ -165,6 +161,7 @@ bool secrets_list_for_user(sqlite3* db, int64_t user_id, std::vector<secret_row>
 
     bool ok = false;
     out->clear();
+    out->reserve(64);
 
     do {
         sqlite3_bind_int64(stmt, 1, user_id);

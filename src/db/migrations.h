@@ -2,6 +2,7 @@
 
 #include <sqlcipher.h>
 
+#include <array>
 #include <cstddef>
 
 namespace ssm::v1 {
@@ -29,7 +30,6 @@ struct Migration {
     const char* rollback_sql;  // null = irreversible
 };
 
-extern const Migration migrations[];
-extern const size_t migrations_count;
+extern const std::array<Migration, 1> migrations;
 
 }  // namespace ssm::v1

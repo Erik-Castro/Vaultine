@@ -5,13 +5,11 @@
 
 namespace ssm::v1 {
 
-const Migration migrations[] = {
+const std::array<Migration, 1> migrations = {{
     {1, 2,
      "CREATE INDEX IF NOT EXISTS idx_secrets_user_id ON secrets(user_id);",
      "DROP INDEX IF EXISTS idx_secrets_user_id;"},
-};
-
-const size_t migrations_count = sizeof(migrations) / sizeof(migrations[0]);
+}};
 
 int db_get_version(sqlite3* db) {
     if (!db)
@@ -56,7 +54,7 @@ bool db_migrate(sqlite3* db) {
         return true;
 
     // Apply pending migrations sequentially (ordered array)
-    for (size_t i = 0; i < migrations_count; ++i) {
+    for (size_t i = 0; i < migrations.size(); ++i) {
         if (migrations[i].from_version != current)
             continue;
 
@@ -96,7 +94,7 @@ bool db_rollback(sqlite3* db, int target_version) {
     if (current < 0 || current <= target_version)
         return false;
 
-    for (int i = static_cast<int>(migrations_count) - 1; i >= 0; --i) {
+    for (int i = static_cast<int>(migrations.size()) - 1; i >= 0; --i) {
         if (migrations[i].to_version != current)
             continue;
         if (!migrations[i].rollback_sql)

@@ -5,9 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Visibility defaults are left off during active development.
-# Set CMAKE_CXX_VISIBILITY_PRESET=hidden before release and
-# annotate public C API symbols with __attribute__((visibility("default"))).
+# SSM_EXPORT controls symbol visibility (public C API only).
+# CMAKE_CXX_VISIBILITY_PRESET=hidden is forced in Release builds.
 
 find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
