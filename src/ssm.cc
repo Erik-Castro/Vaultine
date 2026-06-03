@@ -16,6 +16,7 @@
 #include "crypto/random.h"
 #include "db/audit_log.h"
 #include "db/database.h"
+#include "db/migrations.h"
 #include "db/kek_metadata.h"
 #include "db/secrets.h"
 #include "db/users.h"
@@ -152,6 +153,11 @@ ssm_status ssm_init(ssm_handle** out, const char* db_path, const unsigned char* 
         return SSM_ERR_INTERNAL;
 
     if (!db_create_schema(db)) {
+        db_close(db);
+        return SSM_ERR_INTERNAL;
+    }
+
+    if (!db_migrate(db)) {
         db_close(db);
         return SSM_ERR_INTERNAL;
     }
@@ -741,7 +747,7 @@ ssm_status ssm_backup_restore(ssm_handle* h, const char* backup_path,
             break;
         }
 
-        bool valid_schema = db_create_schema(test_db);
+        bool valid_schema = db_create_schema(test_db) && db_migrate(test_db);
         sqlite3_close(test_db);
         if (!valid_schema) {
             std::remove(tmp_path);
@@ -763,7 +769,7 @@ ssm_status ssm_backup_restore(ssm_handle* h, const char* backup_path,
         if (!db_open(h->db_path, nullptr, 0, &h->db))
             break;
 
-        if (!db_create_schema(h->db))
+        if (!db_create_schema(h->db) || !db_migrate(h->db))
             break;
 
         ok = true;
@@ -785,4 +791,22 @@ ssm_status ssm_export(ssm_handle* h, ssm_export_format format, int redact_pii,
         return SSM_ERR_INTERNAL;
     std::shared_lock lock(h->mutex);
     return export_metadata(h->db, format, redact_pii, callback, user_data);
+}
+
+ssm_status ssm_db_version(ssm_handle* h, int* version_out) {
+    if (!h || !version_out)
+        return SSM_ERR_INTERNAL;
+    std::shared_lock lock(h->mutex);
+    int v = db_get_version(h->db);
+    if (v < 0)
+        return SSM_ERR_INTERNAL;
+    *version_out = v;
+    return SSM_OK;
+}
+
+ssm_status ssm_db_migrate(ssm_handle* h) {
+    if (!h)
+        return SSM_ERR_INTERNAL;
+    std::shared_lock lock(h->mutex);
+    return db_migrate(h->db) ? SSM_OK : SSM_ERR_INTERNAL;
 }

@@ -1,4 +1,5 @@
 #include "db/database.h"
+#include "db/migrations.h"
 
 #include <cstdio>
 #include <string>
@@ -113,6 +114,10 @@ bool db_create_schema(sqlite3* db) {
         sqlite3_free(err);
         return false;
     }
+
+    // Set schema version if this is a fresh or pre-migration database
+    if (db_get_version(db) == 0)
+        db_set_version(db, 1);
 
     return true;
 }

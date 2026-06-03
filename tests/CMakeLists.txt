@@ -6,6 +6,7 @@ add_executable(ssm_test
     crypto/aes_kw_test.cc
     crypto/aes_gcm_test.cc
     db/database_test.cc
+    db/migrations_test.cc
     db/users_test.cc
     db/kek_metadata_test.cc
     db/secrets_test.cc

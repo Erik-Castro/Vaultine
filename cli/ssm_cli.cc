@@ -95,6 +95,8 @@ static void print_usage() {
         "                        --limit, --offset)\n"
         "  backup create/restore <file>\n"
         "                   Encrypted backup (use --backup-key <hex64>)\n"
+        "  db version|migrate\n"
+        "                   Database schema version and migration\n"
         "  export [--format json|csv] [--redact-pii]\n"
         "                   Export metadata (JSON/CSV) to stdout\n"
         "  tui              Interactive terminal interface\n"
@@ -907,6 +909,47 @@ static int handle_env_exec(int argc, char** argv) {
 }
 
 // -------------------------------------------------------------------
+// db handlers
+// -------------------------------------------------------------------
+static void print_help_db() {
+    printf(
+        "db commands:\n"
+        "  version          Show current database schema version\n"
+        "  migrate          Manually trigger schema migration\n");
+}
+
+static int handle_db_version(int /*argc*/, char** /*argv*/) {
+    ssm_handle* h = nullptr;
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
+
+    int version = 0;
+    st = ssm_db_version(h, &version);
+    ssm_destroy(h);
+    if (st != SSM_OK)
+        die_status(st, "db version");
+
+    printf("schema version: %d\n", version);
+    return 0;
+}
+
+static int handle_db_migrate(int /*argc*/, char** /*argv*/) {
+    ssm_handle* h = nullptr;
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
+
+    st = ssm_db_migrate(h);
+    ssm_destroy(h);
+    if (st != SSM_OK)
+        die_status(st, "db migrate");
+
+    printf("OK: schema migration complete\n");
+    return 0;
+}
+
+// -------------------------------------------------------------------
 // dispatch
 // -------------------------------------------------------------------
 struct cmd_map {
@@ -940,6 +983,12 @@ static const cmd_map backup_cmds[] = {
 
 static const cmd_map env_cmds[] = {
     {"exec", handle_env_exec},
+    {nullptr, nullptr},
+};
+
+static const cmd_map db_cmds[] = {
+    {"version", handle_db_version},
+    {"migrate", handle_db_migrate},
     {nullptr, nullptr},
 };
 
@@ -1029,6 +1078,8 @@ int main(int argc, char** argv) {
                 print_help_backup();
             else if (std::strcmp(cmd_argv[0], "env") == 0)
                 print_help_env();
+            else if (std::strcmp(cmd_argv[0], "db") == 0)
+                print_help_db();
             else
                 print_usage();
         } else {
@@ -1055,6 +1106,8 @@ int main(int argc, char** argv) {
         return handle_audit_log(remaining, cmd_argv);
     if (std::strcmp(cmd, "export") == 0)
         return handle_export(remaining, cmd_argv);
+    if (std::strcmp(cmd, "db") == 0)
+        return dispatch(db_cmds, remaining, cmd_argv);
 
     fprintf(stderr, "%s: unknown command '%s'. Try --help\n", g_prog, cmd);
     return 1;

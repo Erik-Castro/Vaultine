@@ -6,6 +6,7 @@ add_library(ssm SHARED
     crypto/aes_kw.cc
     crypto/aes_gcm.cc
     db/database.cc
+    db/migrations.cc
     db/users.cc
     db/kek_metadata.cc
     db/secrets.cc

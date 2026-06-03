@@ -97,6 +97,10 @@ typedef void (*ssm_export_cb)(const char* chunk, size_t len, void* user_data);
 SSM_EXPORT ssm_status ssm_export(ssm_handle* h, ssm_export_format format, int redact_pii,
                                  ssm_export_cb callback, void* user_data);
 
+SSM_EXPORT ssm_status ssm_db_version(ssm_handle* h, int* version_out);
+
+SSM_EXPORT ssm_status ssm_db_migrate(ssm_handle* h);
+
 SSM_EXPORT const char* ssm_status_to_string(ssm_status status);
 
 #ifdef __cplusplus
