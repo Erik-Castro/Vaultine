@@ -1,0 +1,10 @@
+[package]
+name = "vaultine"
+version = "0.3.0"
+edition = "2021"
+description = "Rust bindings for Vaultine — cryptographic secrets management library"
+repository = "https://github.com/Erik-Castro/Vaultine"
+license = "MIT"
+
+[lib]
+name = "vaultine"

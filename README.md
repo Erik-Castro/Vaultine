@@ -971,116 +971,51 @@ def list_secrets(handle, username):
 
 ### Rust
 
+Crate completa em [`bindings/rust/vaultine-rs/`](bindings/rust/vaultine-rs/):
+
 ```rust
-#[link(name = "ssm")]
-extern "C" {
-    fn ssm_init(out: *mut *mut c_void, db_path: *const c_char,
-                db_key: *const u8, db_key_len: usize) -> i32;
-    fn ssm_destroy(h: *mut c_void) -> i32;
-    fn ssm_user_register(h: *mut c_void, username: *const c_char,
-                         password: *const c_char) -> i32;
-    fn ssm_secret_get(h: *mut c_void, username: *const c_char, name: *const c_char,
-                      priv_out: *mut u8, priv_len: *mut usize,
-                      pub_out: *mut u8, pub_len: *mut usize) -> i32;
-    fn ssm_status_to_string(status: i32) -> *const c_char;
-}
+use vaultine::Vaultine;
 
-pub struct Vaultine {
-    handle: *mut c_void,
-}
+let v = Vaultine::new(":memory:", None)?;
+v.user_register("alice", "p@ss")?;
+let ok = v.user_authenticate("alice", "p@ss")?;
+v.secret_store("alice", b"my-key", None, "k1", Some("test key"))?;
+let list = v.secret_list("alice")?;
+v.kek_rotate("alice")?;
+// automatic ssm_destroy via Drop
+```
 
-impl Vaultine {
-    pub fn new(db_path: &str, db_key: &[u8]) -> Result<Self, i32> {
-        let mut handle = std::ptr::null_mut();
-        let path = CString::new(db_path).unwrap();
-        let status = unsafe {
-            ssm_init(&mut handle, path.as_ptr(), db_key.as_ptr(), db_key.len())
-        };
-        if status != 0 { return Err(status); }
-        Ok(Self { handle })
-    }
+Veja [`examples/basic.rs`](bindings/rust/vaultine-rs/examples/basic.rs) e [`src/lib.rs`](bindings/rust/vaultine-rs/src/lib.rs) para API completa com `SecretEntry`, `AuditEntry`, `CacheStats`, `export_metadata`, `db_version`, `backup_create/restore`.
 
-    pub fn user_register(&self, username: &str, password: &str) -> Result<(), i32> {
-        let u = CString::new(username).unwrap();
-        let p = CString::new(password).unwrap();
-        let st = unsafe { ssm_user_register(self.handle, u.as_ptr(), p.as_ptr()) };
-        if st != 0 { Err(st) } else { Ok(()) }
-    }
-
-    pub fn secret_get(&self, username: &str, name: &str) -> Result<Vec<u8>, i32> {
-        let u = CString::new(username).unwrap();
-        let n = CString::new(name).unwrap();
-        let mut buf = vec![0u8; 4096];
-        let mut len = buf.len();
-        let mut pub_buf = vec![0u8; 4096];
-        let mut pub_len = pub_buf.len();
-        let st = unsafe {
-            ssm_secret_get(self.handle, u.as_ptr(), n.as_ptr(),
-                           buf.as_mut_ptr(), &mut len,
-                           pub_buf.as_mut_ptr(), &mut pub_len)
-        };
-        if st != 0 { return Err(st); }
-        buf.truncate(len);
-        Ok(buf)
-    }
-}
-
-impl Drop for Vaultine {
-    fn drop(&mut self) {
-        unsafe { ssm_destroy(self.handle); }
-    }
-}
+**Build:**
+```bash
+RUSTFLAGS="-L /path/to/build/src" cargo build
+LD_LIBRARY_PATH="/path/to/build/src" cargo test
 ```
 
 ### Go (cgo)
 
+Package completo em [`bindings/go/vaultine/`](bindings/go/vaultine/):
+
 ```go
-/*
-#cgo LDFLAGS: -L./build -lssm
-#include "ssm/ssm.h"
-*/
-import "C"
-import "unsafe"
+import "github.com/anomalyco/vaultine"
 
-type Vaultine struct {
-    handle unsafe.Pointer
-}
+v, err := vaultine.New(":memory:", nil)
+v.UserRegister("alice", "p@ss")
+ok, _ := v.UserAuthenticate("alice", "p@ss")
+v.SecretStore("alice", []byte("my-key"), nil, "k1", "test key")
+priv, pub, _ := v.SecretGet("alice", "k1", 4096)
+v.SecretList("alice", func(e vaultine.SecretEntry) { /* ... */ })
+v.KEKRotate("alice")
+v.Destroy()
+```
 
-func New(dbPath string, dbKey []byte) (*Vaultine, error) {
-    var h unsafe.Pointer
-    cpath := C.CString(dbPath)
-    defer C.free(unsafe.Pointer(cpath))
-    var keyPtr *C.uchar
-    var keyLen C.size_t
-    if len(dbKey) > 0 {
-        keyPtr = (*C.uchar)(unsafe.Pointer(&dbKey[0]))
-        keyLen = C.size_t(len(dbKey))
-    }
-    st := C.ssm_init(&h, cpath, keyPtr, keyLen)
-    if st != C.SSM_OK {
-        return nil, fmt.Errorf("ssm_init: %s", C.GoString(C.ssm_status_to_string(st)))
-    }
-    return &Vaultine{handle: h}, nil
-}
+Veja [`examples/main.go`](bindings/go/vaultine/examples/main.go) e [`vaultine.go`](bindings/go/vaultine/vaultine.go) para API completa (`AuditLogQuery`, `CacheStats`, `Export`, `DBVersion`, `DBMigrate`, `BackupCreate`, `BackupRestore`).
 
-func (s *Vaultine) SecretGet(username, name string) ([]byte, error) {
-    cu := C.CString(username)
-    cn := C.CString(name)
-    defer C.free(unsafe.Pointer(cu))
-    defer C.free(unsafe.Pointer(cn))
-    buf := make([]byte, 4096)
-    blen := C.size_t(len(buf))
-    st := C.ssm_secret_get(s.handle, cu, cn,
-        (*C.uchar)(unsafe.Pointer(&buf[0])), &blen, nil, nil)
-    if st != C.SSM_OK {
-        return nil, fmt.Errorf("secret_get: %s", C.GoString(C.ssm_status_to_string(st)))
-    }
-    return buf[:blen], nil
-}
-
-func (s *Vaultine) Close() {
-    C.ssm_destroy(s.handle)
-}
+**Build:**
+```bash
+CGO_CFLAGS="-I/path/to/include" CGO_LDFLAGS="-L/path/to/build/src -lssm" go build
+LD_LIBRARY_PATH="/path/to/build/src" go test
 ```
 
 ### Node.js (node-ffi)
