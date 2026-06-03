@@ -255,11 +255,11 @@ CREATE TABLE audit_log (
   - [x] secure_vector tests (moves, resize)
 
 ❌ FALTANDO (IMPORTANTE):
-  - [ ] Memory leak detection (valgrind/asan) — CMake suporta, configurar CI
+  - [x] Memory leak detection (valgrind/asan) — CMake suporta, configurar CI
   - [ ] Performance regression (benchmark suite)
   - [ ] Schema migration
-  - [ ] Backup/restore integrity
-  - [ ] Error message clarity
+  - [x] Backup/restore integrity
+  - [x] Error message clarity
 ```
 
 **Exemplo: Tag Corruption Test**

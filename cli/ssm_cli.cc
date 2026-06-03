@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "hex_utils.h"
 #include "ssm/ssm.h"
 
 // -------------------------------------------------------------------
@@ -34,33 +35,6 @@ static std::string g_password;
 [[noreturn]] static void die_status(ssm_status st, const char* op) {
     fprintf(stderr, "%s: %s: %s\n", g_prog, op, ssm_status_to_string(st));
     exit(1);
-}
-
-static int hex_val(char c) {
-    if (c >= '0' && c <= '9')
-        return c - '0';
-    if (c >= 'a' && c <= 'f')
-        return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F')
-        return c - 'A' + 10;
-    return -1;
-}
-
-static bool hex_decode(const char* hex, unsigned char* out, size_t* out_len) {
-    size_t len = std::strlen(hex);
-    if (len % 2 != 0 || len == 0)
-        return false;
-    *out_len = len / 2;
-    if (*out_len > 32)
-        return false;
-    for (size_t i = 0; i < *out_len; ++i) {
-        int hi = hex_val(hex[i * 2]);
-        int lo = hex_val(hex[i * 2 + 1]);
-        if (hi < 0 || lo < 0)
-            return false;
-        out[i] = static_cast<unsigned char>((hi << 4) | lo);
-    }
-    return true;
 }
 
 static std::string read_password(const char* prompt) {

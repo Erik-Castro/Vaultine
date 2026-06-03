@@ -51,9 +51,29 @@ if(SSM_FUZZING)
     target_compile_options(fuzz_api PRIVATE -fsanitize=fuzzer)
     target_link_options(fuzz_api PRIVATE -fsanitize=fuzzer)
 
-    # Add seed corpus as fuzz test (runs for 10s each)
     add_test(NAME fuzz_api_quick
         COMMAND fuzz_api -max_total_time=10 -runs=100000
             ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/api/
+    )
+
+    # CLI utility fuzzing (hex_decode, hex_val)
+    add_executable(fuzz_cli fuzz/fuzz_cli.cc)
+    target_include_directories(fuzz_cli PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/cli)
+    target_compile_options(fuzz_cli PRIVATE -fsanitize=fuzzer)
+    target_link_options(fuzz_cli PRIVATE -fsanitize=fuzzer)
+
+    add_test(NAME fuzz_cli_quick
+        COMMAND fuzz_cli -max_total_time=10 -runs=100000
+    )
+
+    # Password validation fuzzing
+    add_executable(fuzz_password fuzz/fuzz_password.cc)
+    target_include_directories(fuzz_password PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(fuzz_password PRIVATE ssm)
+    target_compile_options(fuzz_password PRIVATE -fsanitize=fuzzer)
+    target_link_options(fuzz_password PRIVATE -fsanitize=fuzzer)
+
+    add_test(NAME fuzz_password_quick
+        COMMAND fuzz_password -max_total_time=10 -runs=100000
     )
 endif()

@@ -55,12 +55,18 @@ jobs:
           cmake -B build-fuzz \
             -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 \
             -DSSM_FUZZING=ON -DCMAKE_BUILD_TYPE=Debug
-          cmake --build build-fuzz --target fuzz_api
-      - name: Quick fuzz (10s, seed corpus)
+          cmake --build build-fuzz
+      - name: Quick fuzz API (10s, seed corpus)
         run: |
           mkdir -p build-fuzz/findings
           ./build-fuzz/tests/fuzz_api -max_total_time=10 -runs=100000 \
             tests/fuzz/corpus/api/ 2>&1 || true
+      - name: Quick fuzz CLI (10s)
+        run: |
+          ./build-fuzz/tests/fuzz_cli -max_total_time=10 -runs=100000 2>&1 || true
+      - name: Quick fuzz password (10s)
+        run: |
+          ./build-fuzz/tests/fuzz_password -max_total_time=10 -runs=100000 2>&1 || true
 
   bench:
     runs-on: ubuntu-latest
