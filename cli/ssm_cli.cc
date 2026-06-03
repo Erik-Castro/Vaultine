@@ -18,6 +18,8 @@ static const char* g_prog = "ssm-cli";
 const char* g_db_path = "./ssm.db";
 unsigned char g_db_key[32];
 size_t g_db_key_len = 0;
+static unsigned char g_backup_key[32];
+static size_t g_backup_key_len = 0;
 static bool g_json = false;
 static std::string g_password;
 
@@ -98,6 +100,7 @@ static void print_usage() {
         "  --db <path>       SQLite database path (default: ./ssm.db)\n"
         "  --db-key <hex>    SQLCipher hex key (optional)\n"
         "  --password <str>  Password for all operations (non-interactive)\n"
+        "  --backup-key <hex> 64 hex chars (32 bytes) — required for backup commands\n"
         "  --json            Machine-readable JSON output\n"
         "  --help            Show this help\n"
         "  --version         Show version\n"
@@ -116,6 +119,8 @@ static void print_usage() {
         "  cache-stats      Show cache statistics\n"
         "  audit-log <username>  Query audit log (optional: --operation, --result,\n"
         "                        --limit, --offset)\n"
+        "  backup create/restore <file>\n"
+        "                   Encrypted backup (use --backup-key <hex64>)\n"
         "  tui              Interactive terminal interface\n"
         "  env exec <username> [--] <command> [args...]\n"
         "  help [command]\n",
@@ -674,6 +679,66 @@ static int handle_cache_stats(int /*argc*/, char** /*argv*/) {
 }
 
 // -------------------------------------------------------------------
+// backup handlers
+// -------------------------------------------------------------------
+static void print_help_backup() {
+    printf(
+        "backup commands:\n"
+        "  create <file>              Create encrypted backup of the database\n"
+        "                             Requires --backup-key (hex, 64 chars for 32 bytes)\n"
+        "  restore <file>             Restore database from encrypted backup\n"
+        "                             Requires --backup-key (same key used for create)\n");
+}
+
+static int handle_backup_create(int argc, char** argv) {
+    if (argc < 1) {
+        print_help_backup();
+        return 1;
+    }
+    if (g_backup_key_len != 32) {
+        fprintf(stderr, "error: --backup-key is required (64 hex chars)\n");
+        return 1;
+    }
+    const char* backup_path = argv[0];
+
+    ssm_handle* h = nullptr;
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
+
+    st = ssm_backup_create(h, backup_path, g_backup_key, g_backup_key_len);
+    ssm_destroy(h);
+    if (st != SSM_OK)
+        die_status(st, "backup create");
+    printf("OK: backup written to %s\n", backup_path);
+    return 0;
+}
+
+static int handle_backup_restore(int argc, char** argv) {
+    if (argc < 1) {
+        print_help_backup();
+        return 1;
+    }
+    if (g_backup_key_len != 32) {
+        fprintf(stderr, "error: --backup-key is required (64 hex chars)\n");
+        return 1;
+    }
+    const char* backup_path = argv[0];
+
+    ssm_handle* h = nullptr;
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
+
+    st = ssm_backup_restore(h, backup_path, g_backup_key, g_backup_key_len);
+    ssm_destroy(h);
+    if (st != SSM_OK)
+        die_status(st, "backup restore");
+    printf("OK: database restored from %s\n", backup_path);
+    return 0;
+}
+
+// -------------------------------------------------------------------
 // env handlers
 // -------------------------------------------------------------------
 static void print_help_env() {
@@ -857,6 +922,12 @@ static const cmd_map kek_cmds[] = {
     {nullptr, nullptr},
 };
 
+static const cmd_map backup_cmds[] = {
+    {"create", handle_backup_create},
+    {"restore", handle_backup_restore},
+    {nullptr, nullptr},
+};
+
 static const cmd_map env_cmds[] = {
     {"exec", handle_env_exec},
     {nullptr, nullptr},
@@ -883,11 +954,12 @@ int handle_tui(int argc, char** argv);
 // -------------------------------------------------------------------
 int main(int argc, char** argv) {
     // parse global options
-    enum { OPT_JSON = 256, OPT_PASSWORD };
+    enum { OPT_JSON = 256, OPT_PASSWORD, OPT_BACKUP_KEY };
     static struct option long_opts[] = {
         {"db", required_argument, nullptr, 'd'},
         {"db-key", required_argument, nullptr, 'k'},
         {"password", required_argument, nullptr, OPT_PASSWORD},
+        {"backup-key", required_argument, nullptr, OPT_BACKUP_KEY},
         {"json", no_argument, nullptr, OPT_JSON},
         {"help", no_argument, nullptr, 'h'},
         {"version", no_argument, nullptr, 'v'},
@@ -906,6 +978,10 @@ int main(int argc, char** argv) {
                 break;
             case OPT_PASSWORD:
                 g_password = optarg;
+                break;
+            case OPT_BACKUP_KEY:
+                if (!hex_decode(optarg, g_backup_key, &g_backup_key_len) || g_backup_key_len != 32)
+                    die("--backup-key must be 64 hex chars (32 bytes)");
                 break;
             case OPT_JSON:
                 g_json = true;
@@ -939,6 +1015,8 @@ int main(int argc, char** argv) {
                 print_help_secret();
             else if (std::strcmp(cmd_argv[0], "kek") == 0)
                 print_help_kek();
+            else if (std::strcmp(cmd_argv[0], "backup") == 0)
+                print_help_backup();
             else if (std::strcmp(cmd_argv[0], "env") == 0)
                 print_help_env();
             else
@@ -955,6 +1033,8 @@ int main(int argc, char** argv) {
         return dispatch(secret_cmds, remaining, cmd_argv);
     if (std::strcmp(cmd, "kek") == 0)
         return dispatch(kek_cmds, remaining, cmd_argv);
+    if (std::strcmp(cmd, "backup") == 0)
+        return dispatch(backup_cmds, remaining, cmd_argv);
     if (std::strcmp(cmd, "env") == 0)
         return dispatch(env_cmds, remaining, cmd_argv);
     if (std::strcmp(cmd, "tui") == 0)

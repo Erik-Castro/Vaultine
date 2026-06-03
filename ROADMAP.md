@@ -699,24 +699,28 @@ ssm_status ssm_backup_restore(ssm_handle* h, const char* backup_path,
 
 **Formato Backup**:
 ```
-[Header (16B)]
+[Header (32B)]
   - Magic: "VAULTBKP" (8B)
   - Version: 1 (2B)
   - Created: timestamp (4B)
-  - Reserved: (2B)
+  - Nonce: 12B (AES-GCM IV)
+  - Reserved: 6B
 
 [Ciphertext]
-  - sqlite.db (encrypted with backup_key)
+  - sqlite.db (AES-256-GCM encrypted with backup_key, AAD=header)
 
-[Integrity]
-  - HMAC-SHA256(header + ciphertext, backup_key)
+[Tag: 16B]
+  - AES-GCM authentication tag
+
+[HMAC-SHA256: 32B]
+  - HMAC-SHA256(header + ciphertext + tag, backup_key)
 ```
 
 **Tarefas**:
-- [ ] Implementar backup format
-- [ ] CLI: `ssm-cli backup create/restore`
-- [ ] Integrity validation
-- [ ] Tests (corruption detection)
+- [x] Implementar backup format
+- [x] CLI: `ssm-cli backup create/restore`
+- [x] Integrity validation (AES-GCM auth + HMAC-SHA256)
+- [x] Tests (create, restore, corruption detection, wrong key)
 
 ---
 
@@ -1009,7 +1013,8 @@ Alto    │                   │              │  1.1.4       │
 - [x] **Documentation**: SECURITY.md, CONTRIBUTING.md
 
 ### v0.3.0 RC
-- [ ] **Advanced**: TPM integration, backup/restore, schema migration
+- [x] **Backup/Restore**: assinado + versionado com AES-GCM + HMAC-SHA256
+- [ ] **Advanced**: TPM integration, schema migration
 - [ ] **Distribution**: APT, Homebrew, Conan, Docker
 - [ ] **Community**: GitHub Discussions, FAQ
 

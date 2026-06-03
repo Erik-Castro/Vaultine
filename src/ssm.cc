@@ -3,11 +3,13 @@
 #include <sodium.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <new>
 #include <shared_mutex>
 
+#include "backup/backup.h"
 #include "crypto/aes_gcm.h"
 #include "crypto/aes_kw.h"
 #include "crypto/argon2id.h"
@@ -33,6 +35,7 @@ struct cache_entry {
 
 struct ssm_handle {
     sqlite3* db;
+    char* db_path;
     std::shared_mutex mutex;
     cache_entry cache[SSM_CACHE_MAX];
     size_t cache_hits = 0;
@@ -161,6 +164,14 @@ ssm_status ssm_init(ssm_handle** out, const char* db_path, const unsigned char* 
     }
     auto* h = ::new (mem) ssm_handle{db};
 
+    h->db_path = strdup(db_path ? db_path : "");
+    if (!h->db_path) {
+        h->~ssm_handle();
+        secure_free(h, sizeof(ssm_handle));
+        db_close(db);
+        return SSM_ERR_INTERNAL;
+    }
+
     *out = h;
     return SSM_OK;
 }
@@ -177,6 +188,7 @@ ssm_status ssm_destroy(ssm_handle* h) {
         }
         db_close(h->db);
     }
+    free(h->db_path);
     h->~ssm_handle();
     secure_free(h, sizeof(ssm_handle));
     return SSM_OK;
@@ -666,5 +678,102 @@ ssm_status ssm_kek_rotate(ssm_handle* h, const char* username) {
 
     cache_invalidate(h, user.id);
     audit_write(h->db, username, user.id, "kek_rotate", SSM_OK, username, "{\"status\":\"ok\"}");
+    return SSM_OK;
+}
+
+ssm_status ssm_backup_create(ssm_handle* h, const char* backup_path,
+                             const unsigned char* backup_key, size_t backup_key_len) {
+    if (!h || !backup_path || !backup_key)
+        return SSM_ERR_INTERNAL;
+
+    std::shared_lock lock(h->mutex);
+    sqlite3_wal_checkpoint_v2(h->db, nullptr, SQLITE_CHECKPOINT_FULL, nullptr, nullptr);
+
+    if (!h->db_path || h->db_path[0] == '\0' ||
+        std::strcmp(h->db_path, ":memory:") == 0)
+        return SSM_ERR_INTERNAL;
+
+    if (!backup_create(h->db_path, backup_path, backup_key, backup_key_len))
+        return SSM_ERR_INTERNAL;
+
+    return SSM_OK;
+}
+
+ssm_status ssm_backup_restore(ssm_handle* h, const char* backup_path,
+                              const unsigned char* backup_key, size_t backup_key_len) {
+    if (!h || !backup_path || !backup_key)
+        return SSM_ERR_INTERNAL;
+
+    std::unique_lock lock(h->mutex);
+
+    if (!h->db_path || h->db_path[0] == '\0' ||
+        std::strcmp(h->db_path, ":memory:") == 0)
+        return SSM_ERR_INTERNAL;
+
+    // Read backup into temporary file first
+    const char* tmp_path = nullptr;
+    char tmp_buf[512] = {};
+    {
+        const char* base = std::strrchr(h->db_path, '/');
+        base = base ? base + 1 : h->db_path;
+        const char* dir = h->db_path;
+        auto slash = std::strrchr(h->db_path, '/');
+        if (slash) {
+            size_t dirlen = static_cast<size_t>(slash - h->db_path + 1);
+            std::memcpy(tmp_buf, h->db_path, dirlen);
+            std::snprintf(tmp_buf + dirlen, sizeof(tmp_buf) - dirlen, ".%s.tmp", base);
+        } else {
+            std::snprintf(tmp_buf, sizeof(tmp_buf), ".%s.tmp", base);
+        }
+        tmp_path = tmp_buf;
+    }
+
+    if (!backup_restore(backup_path, tmp_path, backup_key, backup_key_len))
+        return SSM_ERR_INTERNAL;
+
+    bool ok = false;
+    do {
+        // Verify the restored file is a valid SQLite DB
+        sqlite3* test_db = nullptr;
+        if (sqlite3_open_v2(tmp_path, &test_db, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+            std::remove(tmp_path);
+            break;
+        }
+
+        bool valid_schema = db_create_schema(test_db);
+        sqlite3_close(test_db);
+        if (!valid_schema) {
+            std::remove(tmp_path);
+            break;
+        }
+
+        // Close current DB connection
+        db_close(h->db);
+        h->db = nullptr;
+
+        // Replace original DB file with restored temp file
+        std::remove(h->db_path);
+        if (std::rename(tmp_path, h->db_path) != 0) {
+            std::remove(tmp_path);
+            break;
+        }
+
+        // Re-open with original db_key (always use db_key_len 0 for now)
+        if (!db_open(h->db_path, nullptr, 0, &h->db))
+            break;
+
+        if (!db_create_schema(h->db))
+            break;
+
+        ok = true;
+    } while (false);
+
+    if (!ok) {
+        // Try to re-open original, may be gone
+        if (!h->db)
+            db_open(h->db_path, nullptr, 0, &h->db);
+        return SSM_ERR_INTERNAL;
+    }
+
     return SSM_OK;
 }

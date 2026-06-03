@@ -12,6 +12,7 @@ add_executable(ssm_test
     kek/kek_test.cc
     ssm_test.cc
     integration/lifecycle_test.cc
+    backup_test.cc
 )
 
 target_include_directories(ssm_test
