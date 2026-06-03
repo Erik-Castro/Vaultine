@@ -31,3 +31,33 @@ inline bool hex_decode(const char* hex, unsigned char* out, size_t* out_len,
     }
     return true;
 }
+
+inline bool hex_decode(const char* hex, size_t hex_len, unsigned char** out,
+                       size_t* out_len) {
+    if (hex_len % 2 != 0 || hex_len == 0)
+        return false;
+    *out_len = hex_len / 2;
+    *out = new unsigned char[*out_len];
+    for (size_t i = 0; i < *out_len; ++i) {
+        int hi = hex_val(hex[i * 2]);
+        int lo = hex_val(hex[i * 2 + 1]);
+        if (hi < 0 || lo < 0) {
+            delete[] * out;
+            *out = nullptr;
+            return false;
+        }
+        (*out)[i] = static_cast<unsigned char>((hi << 4) | lo);
+    }
+    return true;
+}
+
+inline std::string hex_encode(const unsigned char* data, size_t len) {
+    static const char hex[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(len * 2);
+    for (size_t i = 0; i < len; ++i) {
+        out += hex[(data[i] >> 4) & 0xf];
+        out += hex[data[i] & 0xf];
+    }
+    return out;
+}

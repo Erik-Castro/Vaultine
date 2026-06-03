@@ -11,6 +11,7 @@
 
 #include "hex_utils.h"
 #include "ssm/ssm.h"
+#include "ssm_server.h"
 
 // -------------------------------------------------------------------
 // Globals
@@ -101,6 +102,8 @@ static void print_usage() {
         "                   Export metadata (JSON/CSV) to stdout\n"
         "  tui              Interactive terminal interface\n"
         "  env exec <username> [--] <command> [args...]\n"
+        "  server start [--port <n>] [--host <addr>] [--daemonize]\n"
+        "              [--pidfile <path>]\n"
         "  help [command]\n",
         g_prog);
 }
@@ -918,6 +921,16 @@ static void print_help_db() {
         "  migrate          Manually trigger schema migration\n");
 }
 
+static void print_help_server() {
+    printf(
+        "server commands:\n"
+        "  start            Start REST API server\n"
+        "    --port <n>     Port to listen on (default: 8080)\n"
+        "    --host <addr>  Host address to bind (default: 127.0.0.1)\n"
+        "    --daemonize    Fork to background\n"
+        "    --pidfile <p>  PID file path (default: ./ssm-cli.pid)\n");
+}
+
 static int handle_db_version(int /*argc*/, char** /*argv*/) {
     ssm_handle* h = nullptr;
     ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
@@ -989,6 +1002,11 @@ static const cmd_map env_cmds[] = {
 static const cmd_map db_cmds[] = {
     {"version", handle_db_version},
     {"migrate", handle_db_migrate},
+    {nullptr, nullptr},
+};
+
+static const cmd_map server_cmds[] = {
+    {"start", handle_server_start},
     {nullptr, nullptr},
 };
 
@@ -1080,6 +1098,8 @@ int main(int argc, char** argv) {
                 print_help_env();
             else if (std::strcmp(cmd_argv[0], "db") == 0)
                 print_help_db();
+            else if (std::strcmp(cmd_argv[0], "server") == 0)
+                print_help_server();
             else
                 print_usage();
         } else {
@@ -1100,6 +1120,8 @@ int main(int argc, char** argv) {
         return dispatch(env_cmds, remaining, cmd_argv);
     if (std::strcmp(cmd, "tui") == 0)
         return handle_tui(remaining, cmd_argv);
+    if (std::strcmp(cmd, "server") == 0)
+        return dispatch(server_cmds, remaining, cmd_argv);
     if (std::strcmp(cmd, "cache-stats") == 0)
         return handle_cache_stats(remaining, cmd_argv);
     if (std::strcmp(cmd, "audit-log") == 0)
