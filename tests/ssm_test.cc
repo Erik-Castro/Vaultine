@@ -53,9 +53,10 @@ TEST_F(SsmApiTest, AuthenticateUnknownUser) {
     EXPECT_EQ(valid, 0);
 }
 
-TEST_F(SsmApiTest, DuplicateRegistrationFails) {
+TEST_F(SsmApiTest, DuplicateRegistrationDoesNotRevealExistence) {
     ASSERT_EQ(ssm_user_register(handle_, "carol", "pass"), SSM_OK);
-    EXPECT_EQ(ssm_user_register(handle_, "carol", "pass"), SSM_ERR_AUTH);
+    // Must return SSM_OK to prevent user enumeration (SDD)
+    EXPECT_EQ(ssm_user_register(handle_, "carol", "pass"), SSM_OK);
 }
 
 TEST_F(SsmApiTest, StoreAndGetSecret) {
@@ -672,9 +673,10 @@ TEST_F(AuditLogTest, RegisterCreatesAuditRecord) {
 
 TEST_F(AuditLogTest, RegisterDuplicateHasDetails) {
     ASSERT_EQ(ssm_user_register(handle_, "dup", "p@ssw0rd"), SSM_OK);
-    ASSERT_EQ(ssm_user_register(handle_, "dup", "p@ssw0rd"), SSM_ERR_AUTH);
-    EXPECT_TRUE(audit_has_details(path_, "user_register", "SSM_ERR_AUTH",
-                                  "{\"error\":\"username already exists\"}"));
+    // Second register must not reveal user exists (SDD)
+    ASSERT_EQ(ssm_user_register(handle_, "dup", "p@ssw0rd"), SSM_OK);
+    EXPECT_TRUE(audit_has_details(path_, "user_register", "SSM_OK",
+                                  "{\"status\":\"ok\"}"));
 }
 
 TEST_F(AuditLogTest, AuthUnknownUserHasDetails) {
@@ -867,6 +869,67 @@ TEST_F(AuditLogTest, QueryRespectsLimit) {
 TEST_F(AuditLogTest, NullHandleReturnsError) {
     EXPECT_EQ(ssm_audit_log_query(nullptr, "x", nullptr, nullptr, 10, 0, query_cb, nullptr),
               SSM_ERR_INTERNAL);
+}
+
+// ── Error Message Clarity ─────────────────────────────────────────────
+
+TEST(SsmErrorClarityTest, StatusToStringAllStatuses) {
+    // Every ssm_status must have a non-null, non-empty string representation
+    for (int s = SSM_OK; s <= SSM_ERR_INTERNAL; ++s) {
+        const char* str = ssm_status_to_string(static_cast<ssm_status>(s));
+        EXPECT_NE(str, nullptr);
+        EXPECT_GT(std::strlen(str), 0);
+    }
+}
+
+TEST(SsmErrorClarityTest, StatusToStringIsStable) {
+    EXPECT_STREQ(ssm_status_to_string(SSM_OK), "SSM_OK");
+    EXPECT_STREQ(ssm_status_to_string(SSM_ERR_NOT_FOUND), "SSM_ERR_NOT_FOUND");
+    EXPECT_STREQ(ssm_status_to_string(SSM_ERR_AUTH), "SSM_ERR_AUTH");
+    EXPECT_STREQ(ssm_status_to_string(SSM_ERR_INTEGRITY), "SSM_ERR_INTEGRITY");
+    EXPECT_STREQ(ssm_status_to_string(SSM_ERR_INTERNAL), "SSM_ERR_INTERNAL");
+}
+
+TEST_F(SsmApiTest, NullHandleReturnsErrorOnAllAPIs) {
+    int valid = 0;
+    unsigned char buf[4] = {};
+    size_t len = sizeof(buf);
+
+    EXPECT_EQ(ssm_user_register(nullptr, "x", "p"), SSM_ERR_INTERNAL);
+    EXPECT_EQ(ssm_user_authenticate(nullptr, "x", "p", &valid), SSM_ERR_INTERNAL);
+    EXPECT_EQ(ssm_user_delete(nullptr, "x", "p"), SSM_ERR_INTERNAL);
+    EXPECT_EQ(ssm_secret_store(nullptr, "x", buf, len, nullptr, 0, "k", nullptr),
+              SSM_ERR_INTERNAL);
+    EXPECT_EQ(ssm_secret_get(nullptr, "x", "k", buf, &len, nullptr, nullptr),
+              SSM_ERR_INTERNAL);
+    EXPECT_EQ(ssm_secret_delete(nullptr, "x", "k"), SSM_ERR_INTERNAL);
+    EXPECT_EQ(ssm_secret_list(nullptr, "x", nullptr, nullptr), SSM_ERR_INTERNAL);
+    EXPECT_EQ(ssm_kek_rotate(nullptr, "x"), SSM_ERR_INTERNAL);
+    EXPECT_EQ(ssm_cache_get_stats(nullptr, nullptr), SSM_ERR_INTERNAL);
+}
+
+TEST_F(SsmApiTest, NullUsernameReturnsError) {
+    int valid = 0;
+    EXPECT_EQ(ssm_user_register(handle_, nullptr, "p"), SSM_ERR_INTERNAL);
+    EXPECT_EQ(ssm_user_authenticate(handle_, nullptr, "p", &valid), SSM_ERR_INTERNAL);
+}
+
+TEST_F(SsmApiTest, AuthDoesNotLeakUserExistence) {
+    // Both missing user and wrong password return SSM_OK with is_valid=0 (SDD)
+    int valid = 1;
+    EXPECT_EQ(ssm_user_authenticate(handle_, "nonexistent_user", "x", &valid), SSM_OK);
+    EXPECT_EQ(valid, 0);
+}
+
+TEST_F(SsmApiTest, DuplicateRegistrationThenAuthFails) {
+    // Register twice; second call must not reveal user exists (SSM_OK returned).
+    // Auth with the second password must fail because original password differs.
+    ASSERT_EQ(ssm_user_register(handle_, "enum_test", "original_pass"), SSM_OK);
+    EXPECT_EQ(ssm_user_register(handle_, "enum_test", "attacker_pass"), SSM_OK);
+
+    int valid = 1;
+    EXPECT_EQ(ssm_user_authenticate(handle_, "enum_test", "attacker_pass", &valid), SSM_OK);
+    EXPECT_EQ(valid, 0);
 }
 
 }  // namespace

@@ -213,9 +213,9 @@ ssm_status ssm_user_register(ssm_handle* h, const char* username, const char* pa
 
     user_row existing;
     if (users_find_by_username(h->db, username, &existing)) {
-        audit_write(h->db, username, 0, "user_register", SSM_ERR_AUTH, nullptr,
-                    "{\"error\":\"username already exists\"}");
-        return SSM_ERR_AUTH;
+        audit_write(h->db, username, 0, "user_register", SSM_OK, nullptr,
+                    "{\"status\":\"ok\"}");
+        return SSM_OK;
     }
 
     size_t pw_len = std::strlen(password);
