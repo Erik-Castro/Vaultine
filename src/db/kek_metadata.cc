@@ -106,7 +106,7 @@ bool kek_update(sqlite3* db, int64_t user_id, const unsigned char* wrapped_kek,
 
     do {
         if (sqlite3_bind_blob(stmt, 1, wrapped_kek, static_cast<int>(wrapped_kek_len),
-                               SQLITE_TRANSIENT) != SQLITE_OK)
+                              SQLITE_TRANSIENT) != SQLITE_OK)
             break;
 
         if (sqlite3_bind_blob(stmt, 2, salt, static_cast<int>(salt_len), SQLITE_TRANSIENT) !=

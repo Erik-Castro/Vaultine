@@ -89,8 +89,8 @@ bool kek_unwrap(const unsigned char* wrapped_kek, size_t wrapped_kek_len,
                                      wrapping_key.data(), wrapping_key.size()))
             break;
 
-        if (!aes_kw_unwrap(wrapped_kek, wrapped_kek_len, wrapping_key.data(),
-                           wrapping_key.size(), kek_out, kek_len))
+        if (!aes_kw_unwrap(wrapped_kek, wrapped_kek_len, wrapping_key.data(), wrapping_key.size(),
+                           kek_out, kek_len))
             break;
 
         ok = true;
@@ -144,8 +144,7 @@ bool kek_rotate(sqlite3* db, int64_t user_id, const unsigned char* auth_hash,
     secure_buffer<unsigned char> new_salt(KEK_SALT_LEN);
     secure_buffer<unsigned char> new_wrapped(64);
     secure_buffer<unsigned char> old_kek_raw(KEK_KEY_LEN);
-    if (!wrapping_key || !new_kek || !new_wrapping_key || !new_salt || !new_wrapped ||
-        !old_kek_raw)
+    if (!wrapping_key || !new_kek || !new_wrapping_key || !new_salt || !new_wrapped || !old_kek_raw)
         return false;
 
     size_t new_wrapped_len = 0;
@@ -160,8 +159,8 @@ bool kek_rotate(sqlite3* db, int64_t user_id, const unsigned char* auth_hash,
 
         size_t old_kek_len = old_kek_raw.size();
         if (!kek_unwrap(old_kek.wrapped_kek.data(), old_kek.wrapped_kek.size(), auth_hash,
-                        auth_hash_len, old_kek.salt.data(), old_kek.salt.size(),
-                        old_kek_raw.data(), &old_kek_len))
+                        auth_hash_len, old_kek.salt.data(), old_kek.salt.size(), old_kek_raw.data(),
+                        &old_kek_len))
             break;
 
         // --- load all secrets ---

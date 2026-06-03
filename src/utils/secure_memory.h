@@ -29,13 +29,12 @@ void secure_free(void* ptr, size_t size) noexcept;
 template <typename T>
 class secure_buffer {
     static_assert(std::is_trivially_copyable_v<T>);
+
 public:
     secure_buffer() = default;
 
     explicit secure_buffer(size_t count)
-        : data_(static_cast<T*>(secure_alloc(count * sizeof(T))))
-        , size_(data_ ? count : 0)
-    {
+        : data_(static_cast<T*>(secure_alloc(count * sizeof(T)))), size_(data_ ? count : 0) {
         if (data_)
             for (size_t i = 0; i < size_; ++i)
                 ::new (data_ + i) T{};
@@ -44,9 +43,7 @@ public:
     secure_buffer(secure_buffer const&) = delete;
     auto operator=(secure_buffer const&) -> secure_buffer& = delete;
 
-    secure_buffer(secure_buffer&& other) noexcept
-        : data_(other.data_), size_(other.size_)
-    {
+    secure_buffer(secure_buffer&& other) noexcept : data_(other.data_), size_(other.size_) {
         other.data_ = nullptr;
         other.size_ = 0;
     }

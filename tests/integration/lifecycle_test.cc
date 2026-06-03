@@ -1,10 +1,10 @@
-#include "ssm/ssm.h"
-
 #include <gtest/gtest.h>
 
 #include <cstdio>
 #include <cstring>
 #include <vector>
+
+#include "ssm/ssm.h"
 
 namespace ssm::v1 {
 namespace {
@@ -14,13 +14,13 @@ struct Lifecycle {
     std::vector<std::string> descs;
 };
 
-void lifecycle_cb(const char* name, const char* desc, const char* updated_at,
-                  size_t pub_key_len, void* user_data) {
+void lifecycle_cb(const char* name, const char* desc, const char* updated_at, size_t pub_key_len,
+                  void* user_data) {
     auto* lc = static_cast<Lifecycle*>(user_data);
     lc->names.push_back(name ? name : "");
     lc->descs.push_back(desc ? desc : "");
-    (void)updated_at;
-    (void)pub_key_len;
+    (void) updated_at;
+    (void) pub_key_len;
 }
 
 TEST(LifecycleIntegration, FullLifecycle) {
@@ -44,16 +44,19 @@ TEST(LifecycleIntegration, FullLifecycle) {
 
     // 3. store secrets for alice
     unsigned char a_priv[] = "alice-ecdsa-private-key-32b!!";
-    unsigned char a_pub[]  = "alice-public-key-here-28b!!";
+    unsigned char a_pub[] = "alice-public-key-here-28b!!";
     ASSERT_EQ(ssm_secret_store(h, "alice", a_priv, sizeof(a_priv), a_pub, sizeof(a_pub),
-                               "ecdsa-key", "ECDSA keypair"), SSM_OK);
-    ASSERT_EQ(ssm_secret_store(h, "alice", a_priv, sizeof(a_priv), nullptr, 0,
-                               "backup-seed", "BIP39 seed"), SSM_OK);
+                               "ecdsa-key", "ECDSA keypair"),
+              SSM_OK);
+    ASSERT_EQ(ssm_secret_store(h, "alice", a_priv, sizeof(a_priv), nullptr, 0, "backup-seed",
+                               "BIP39 seed"),
+              SSM_OK);
 
     // 4. store secrets for bob
     unsigned char b_priv[] = "bob-ed25519-private-key!!";
-    ASSERT_EQ(ssm_secret_store(h, "bob", b_priv, sizeof(b_priv), nullptr, 0,
-                               "ed25519", "Ed25519 signing key"), SSM_OK);
+    ASSERT_EQ(ssm_secret_store(h, "bob", b_priv, sizeof(b_priv), nullptr, 0, "ed25519",
+                               "Ed25519 signing key"),
+              SSM_OK);
 
     // 5. verify tenant isolation
     unsigned char out[64];

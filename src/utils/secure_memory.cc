@@ -1,9 +1,9 @@
 #include "utils/secure_memory.h"
 
-#include <cstdlib>
+#include <sodium.h>
 #include <sys/mman.h>
 
-#include <sodium.h>
+#include <cstdlib>
 
 namespace ssm::v1 {
 

@@ -103,9 +103,7 @@ TEST(SecureVectorDeathTest, StaticAssertNonTrivial) {
 // -------------------------------------------------------------------
 // secure_alloc / secure_free tests
 // -------------------------------------------------------------------
-TEST(SecureAllocTest, ZeroSizeReturnsNull) {
-    EXPECT_EQ(secure_alloc(0), nullptr);
-}
+TEST(SecureAllocTest, ZeroSizeReturnsNull) { EXPECT_EQ(secure_alloc(0), nullptr); }
 
 TEST(SecureAllocTest, AllocReturnsNonNull) {
     auto* p = secure_alloc(64);
@@ -122,13 +120,9 @@ TEST(SecureAllocTest, AllocMemoryIsWritable) {
     secure_free(p, 128);
 }
 
-TEST(SecureAllocTest, FreeNullIsSafe) {
-    secure_free(nullptr, 0);
-}
+TEST(SecureAllocTest, FreeNullIsSafe) { secure_free(nullptr, 0); }
 
-TEST(SecureAllocTest, FreeNullWithSizeIsSafe) {
-    secure_free(nullptr, 64);
-}
+TEST(SecureAllocTest, FreeNullWithSizeIsSafe) { secure_free(nullptr, 64); }
 
 TEST(SecureAllocTest, MultipleAllocs) {
     auto* a = secure_alloc(32);

@@ -54,12 +54,10 @@ ssm_status default_password_validator(const char* password, void* /*user_data*/)
 ssm_password_validator g_validator = default_password_validator;
 void* g_validator_user_data = nullptr;
 
-void audit_write(sqlite3* db, const char* username, int64_t user_id,
-                  const char* operation, ssm_status result,
-                  const char* operation_target = nullptr,
-                  const char* details = nullptr) {
-    audit_log_write(db, user_id, username ? username : "",
-                    operation, ssm_status_to_string(result),
+void audit_write(sqlite3* db, const char* username, int64_t user_id, const char* operation,
+                 ssm_status result, const char* operation_target = nullptr,
+                 const char* details = nullptr) {
+    audit_log_write(db, user_id, username ? username : "", operation, ssm_status_to_string(result),
                     operation_target, details);
 }
 
@@ -89,7 +87,8 @@ void cache_insert(ssm_handle* h, int64_t user_id, const unsigned char* key) {
             slot = i;
         }
     }
-    if (slot < 0) return;
+    if (slot < 0)
+        return;
     std::memcpy(h->cache[slot].key, key, KEK_KEY_LEN);
     h->cache[slot].user_id = user_id;
     h->cache[slot].last_used = std::time(nullptr);
@@ -108,13 +107,20 @@ void cache_invalidate(ssm_handle* h, int64_t user_id) {
 
 const char* ssm_status_to_string(ssm_status status) {
     switch (status) {
-        case SSM_OK:        return "SSM_OK";
-        case SSM_ERR_AUTH:  return "SSM_ERR_AUTH";
-        case SSM_ERR_NOT_FOUND: return "SSM_ERR_NOT_FOUND";
-        case SSM_ERR_EXPIRED:   return "SSM_ERR_EXPIRED";
-        case SSM_ERR_INTEGRITY: return "SSM_ERR_INTEGRITY";
-        case SSM_ERR_INTERNAL:  return "SSM_ERR_INTERNAL";
-        default: return "SSM_ERR_UNKNOWN";
+        case SSM_OK:
+            return "SSM_OK";
+        case SSM_ERR_AUTH:
+            return "SSM_ERR_AUTH";
+        case SSM_ERR_NOT_FOUND:
+            return "SSM_ERR_NOT_FOUND";
+        case SSM_ERR_EXPIRED:
+            return "SSM_ERR_EXPIRED";
+        case SSM_ERR_INTEGRITY:
+            return "SSM_ERR_INTEGRITY";
+        case SSM_ERR_INTERNAL:
+            return "SSM_ERR_INTERNAL";
+        default:
+            return "SSM_ERR_UNKNOWN";
     }
 }
 
@@ -193,8 +199,8 @@ ssm_status ssm_user_register(ssm_handle* h, const char* username, const char* pa
 
     user_row existing;
     if (users_find_by_username(h->db, username, &existing)) {
-        audit_write(h->db, username, 0, "user_register", SSM_ERR_AUTH,
-                    nullptr, "{\"error\":\"username already exists\"}");
+        audit_write(h->db, username, 0, "user_register", SSM_ERR_AUTH, nullptr,
+                    "{\"error\":\"username already exists\"}");
         return SSM_ERR_AUTH;
     }
 
@@ -237,8 +243,8 @@ ssm_status ssm_user_authenticate(ssm_handle* h, const char* username, const char
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
         *is_valid = 0;
-        audit_write(h->db, username, 0, "user_authenticate", SSM_ERR_AUTH,
-                    nullptr, "{\"error\":\"user not found\"}");
+        audit_write(h->db, username, 0, "user_authenticate", SSM_ERR_AUTH, nullptr,
+                    "{\"error\":\"user not found\"}");
         return SSM_OK;
     }
 
@@ -247,8 +253,7 @@ ssm_status ssm_user_authenticate(ssm_handle* h, const char* username, const char
                                  user.password_hash.data(), user.password_hash.size());
     *is_valid = pw_ok ? 1 : 0;
 
-    audit_write(h->db, username, user.id, "user_authenticate",
-                pw_ok ? SSM_OK : SSM_ERR_AUTH,
+    audit_write(h->db, username, user.id, "user_authenticate", pw_ok ? SSM_OK : SSM_ERR_AUTH,
                 nullptr, pw_ok ? "{\"status\":\"ok\"}" : "{\"error\":\"password mismatch\"}");
     return SSM_OK;
 }
@@ -263,8 +268,8 @@ ssm_status ssm_secret_store(ssm_handle* h, const char* username, const unsigned 
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "secret_store", SSM_ERR_AUTH,
-                    nullptr, "{\"error\":\"user not found\"}");
+        audit_write(h->db, username, 0, "secret_store", SSM_ERR_AUTH, nullptr,
+                    "{\"error\":\"user not found\"}");
         return SSM_ERR_AUTH;
     }
 
@@ -273,8 +278,8 @@ ssm_status ssm_secret_store(ssm_handle* h, const char* username, const unsigned 
         return SSM_ERR_INTERNAL;
 
     if (kek_is_expired(kek_meta.expires_at.c_str())) {
-        audit_write(h->db, username, user.id, "secret_store", SSM_ERR_EXPIRED,
-                    name, "{\"error\":\"KEK expired\"}");
+        audit_write(h->db, username, user.id, "secret_store", SSM_ERR_EXPIRED, name,
+                    "{\"error\":\"KEK expired\"}");
         return SSM_ERR_EXPIRED;
     }
 
@@ -314,8 +319,8 @@ ssm_status ssm_secret_store(ssm_handle* h, const char* username, const unsigned 
         return SSM_ERR_INTERNAL;
 
     char det[128] = {};
-    std::snprintf(det, sizeof(det), "{\"key_size\":%zu,\"has_pub\":%s}",
-                  private_key_len, public_key_len > 0 ? "true" : "false");
+    std::snprintf(det, sizeof(det), "{\"key_size\":%zu,\"has_pub\":%s}", private_key_len,
+                  public_key_len > 0 ? "true" : "false");
     audit_write(h->db, username, user.id, "secret_store", SSM_OK, name, det);
     return SSM_OK;
 }
@@ -330,8 +335,8 @@ ssm_status ssm_secret_get(ssm_handle* h, const char* username, const char* name,
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "secret_get", SSM_ERR_AUTH,
-                    nullptr, "{\"error\":\"user not found\"}");
+        audit_write(h->db, username, 0, "secret_get", SSM_ERR_AUTH, nullptr,
+                    "{\"error\":\"user not found\"}");
         return SSM_ERR_AUTH;
     }
 
@@ -340,8 +345,8 @@ ssm_status ssm_secret_get(ssm_handle* h, const char* username, const char* name,
         return SSM_ERR_INTERNAL;
 
     if (kek_is_expired(kek_meta.expires_at.c_str())) {
-        audit_write(h->db, username, user.id, "secret_get", SSM_ERR_EXPIRED,
-                    name, "{\"error\":\"KEK expired\"}");
+        audit_write(h->db, username, user.id, "secret_get", SSM_ERR_EXPIRED, name,
+                    "{\"error\":\"KEK expired\"}");
         return SSM_ERR_EXPIRED;
     }
 
@@ -373,14 +378,14 @@ ssm_status ssm_secret_get(ssm_handle* h, const char* username, const char* name,
     }
 
     secure_vector<unsigned char> plaintext(secret.private_key.size());
-    bool dec_ok = aes_gcm_decrypt(secret.private_key.data(), secret.private_key.size(),
-                                  kek_raw.data(), kek_len, secret.nonce.data(), secret.nonce.size(),
-                                  nullptr, 0, secret.tag.data(), secret.tag.size(),
-                                  plaintext.data());
+    bool dec_ok =
+        aes_gcm_decrypt(secret.private_key.data(), secret.private_key.size(), kek_raw.data(),
+                        kek_len, secret.nonce.data(), secret.nonce.size(), nullptr, 0,
+                        secret.tag.data(), secret.tag.size(), plaintext.data());
 
     if (!dec_ok) {
-        audit_write(h->db, username, user.id, "secret_get", SSM_ERR_INTEGRITY,
-                    name, "{\"error\":\"GCM integrity check failed\"}");
+        audit_write(h->db, username, user.id, "secret_get", SSM_ERR_INTEGRITY, name,
+                    "{\"error\":\"GCM integrity check failed\"}");
         return SSM_ERR_INTEGRITY;
     }
 
@@ -413,8 +418,8 @@ ssm_status ssm_secret_delete(ssm_handle* h, const char* username, const char* na
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "secret_delete", SSM_ERR_AUTH,
-                    nullptr, "{\"error\":\"user not found\"}");
+        audit_write(h->db, username, 0, "secret_delete", SSM_ERR_AUTH, nullptr,
+                    "{\"error\":\"user not found\"}");
         return SSM_ERR_AUTH;
     }
 
@@ -423,8 +428,8 @@ ssm_status ssm_secret_delete(ssm_handle* h, const char* username, const char* na
         return SSM_ERR_INTERNAL;
 
     if (kek_is_expired(kek_meta.expires_at.c_str())) {
-        audit_write(h->db, username, user.id, "secret_delete", SSM_ERR_EXPIRED,
-                    name, "{\"error\":\"KEK expired\"}");
+        audit_write(h->db, username, user.id, "secret_delete", SSM_ERR_EXPIRED, name,
+                    "{\"error\":\"KEK expired\"}");
         return SSM_ERR_EXPIRED;
     }
 
@@ -435,8 +440,8 @@ ssm_status ssm_secret_delete(ssm_handle* h, const char* username, const char* na
     return SSM_OK;
 }
 
-ssm_status ssm_secret_list(ssm_handle* h, const char* username,
-                            ssm_secret_list_cb callback, void* user_data) {
+ssm_status ssm_secret_list(ssm_handle* h, const char* username, ssm_secret_list_cb callback,
+                           void* user_data) {
     if (!h || !username || !callback)
         return SSM_ERR_INTERNAL;
 
@@ -444,8 +449,8 @@ ssm_status ssm_secret_list(ssm_handle* h, const char* username,
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "secret_list", SSM_ERR_AUTH,
-                    nullptr, "{\"error\":\"user not found\"}");
+        audit_write(h->db, username, 0, "secret_list", SSM_ERR_AUTH, nullptr,
+                    "{\"error\":\"user not found\"}");
         return SSM_ERR_AUTH;
     }
 
@@ -454,8 +459,8 @@ ssm_status ssm_secret_list(ssm_handle* h, const char* username,
         return SSM_ERR_INTERNAL;
 
     if (kek_is_expired(kek_meta.expires_at.c_str())) {
-        audit_write(h->db, username, user.id, "secret_list", SSM_ERR_EXPIRED,
-                    nullptr, "{\"error\":\"KEK expired\"}");
+        audit_write(h->db, username, user.id, "secret_list", SSM_ERR_EXPIRED, nullptr,
+                    "{\"error\":\"KEK expired\"}");
         return SSM_ERR_EXPIRED;
     }
 
@@ -464,22 +469,23 @@ ssm_status ssm_secret_list(ssm_handle* h, const char* username,
         return SSM_ERR_INTERNAL;
 
     for (auto& s : secrets) {
-        callback(s.name.c_str(), s.description.c_str(), s.updated_at.c_str(),
-                 s.public_key.size(), user_data);
+        callback(s.name.c_str(), s.description.c_str(), s.updated_at.c_str(), s.public_key.size(),
+                 user_data);
     }
 
     audit_write(h->db, username, user.id, "secret_list", SSM_OK, nullptr, "{\"status\":\"ok\"}");
     return SSM_OK;
 }
 
-ssm_status ssm_audit_log_query(ssm_handle* h, const char* username,
-                                const char* operation, const char* result,
-                                int64_t limit, int64_t offset,
-                                ssm_audit_log_cb callback, void* user_data) {
+ssm_status ssm_audit_log_query(ssm_handle* h, const char* username, const char* operation,
+                               const char* result, int64_t limit, int64_t offset,
+                               ssm_audit_log_cb callback, void* user_data) {
     if (!h || !callback)
         return SSM_ERR_INTERNAL;
-    if (limit <= 0) limit = 100;
-    if (offset < 0) offset = 0;
+    if (limit <= 0)
+        limit = 100;
+    if (offset < 0)
+        offset = 0;
 
     std::shared_lock lock(h->mutex);
     std::vector<audit_entry> entries;
@@ -488,8 +494,8 @@ ssm_status ssm_audit_log_query(ssm_handle* h, const char* username,
 
     for (auto& e : entries) {
         callback(e.id, e.user_id, e.username.c_str(), e.operation.c_str(),
-                 e.operation_target.c_str(), e.details.c_str(),
-                 e.result.c_str(), e.timestamp.c_str(), user_data);
+                 e.operation_target.c_str(), e.details.c_str(), e.result.c_str(),
+                 e.timestamp.c_str(), user_data);
     }
     return SSM_OK;
 }
@@ -502,16 +508,16 @@ ssm_status ssm_user_delete(ssm_handle* h, const char* username, const char* pass
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "user_delete", SSM_ERR_AUTH,
-                    nullptr, "{\"error\":\"user not found\"}");
+        audit_write(h->db, username, 0, "user_delete", SSM_ERR_AUTH, nullptr,
+                    "{\"error\":\"user not found\"}");
         return SSM_ERR_AUTH;
     }
 
     size_t pw_len = std::strlen(password);
     if (!argon2id_verify(reinterpret_cast<const unsigned char*>(password), pw_len,
                          user.password_hash.data(), user.password_hash.size())) {
-        audit_write(h->db, username, user.id, "user_delete", SSM_ERR_AUTH,
-                    nullptr, "{\"error\":\"password mismatch\"}");
+        audit_write(h->db, username, user.id, "user_delete", SSM_ERR_AUTH, nullptr,
+                    "{\"error\":\"password mismatch\"}");
         return SSM_ERR_AUTH;
     }
 
@@ -522,8 +528,8 @@ ssm_status ssm_user_delete(ssm_handle* h, const char* username, const char* pass
     return SSM_OK;
 }
 
-ssm_status ssm_user_change_password(ssm_handle* h, const char* username,
-                                     const char* old_password, const char* new_password) {
+ssm_status ssm_user_change_password(ssm_handle* h, const char* username, const char* old_password,
+                                    const char* new_password) {
     if (!h || !username || !old_password || !new_password)
         return SSM_ERR_INTERNAL;
 
@@ -535,16 +541,16 @@ ssm_status ssm_user_change_password(ssm_handle* h, const char* username,
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "user_change_password", SSM_ERR_AUTH,
-                    nullptr, "{\"error\":\"user not found\"}");
+        audit_write(h->db, username, 0, "user_change_password", SSM_ERR_AUTH, nullptr,
+                    "{\"error\":\"user not found\"}");
         return SSM_ERR_AUTH;
     }
 
     size_t old_len = std::strlen(old_password);
     if (!argon2id_verify(reinterpret_cast<const unsigned char*>(old_password), old_len,
                          user.password_hash.data(), user.password_hash.size())) {
-        audit_write(h->db, username, user.id, "user_change_password", SSM_ERR_AUTH,
-                    nullptr, "{\"error\":\"password mismatch\"}");
+        audit_write(h->db, username, user.id, "user_change_password", SSM_ERR_AUTH, nullptr,
+                    "{\"error\":\"password mismatch\"}");
         return SSM_ERR_AUTH;
     }
 
@@ -561,8 +567,7 @@ ssm_status ssm_user_change_password(ssm_handle* h, const char* username,
     bool ok = false;
     do {
         // update users.password_hash
-        const char* update_user =
-            "UPDATE users SET password_hash = ? WHERE id = ?";
+        const char* update_user = "UPDATE users SET password_hash = ? WHERE id = ?";
         sqlite3_stmt* stmt_u = nullptr;
         if (sqlite3_prepare_v2(h->db, update_user, -1, &stmt_u, nullptr) != SQLITE_OK)
             break;
@@ -588,18 +593,17 @@ ssm_status ssm_user_change_password(ssm_handle* h, const char* username,
 
         size_t kek_len = kek_raw.size();
         if (!kek_unwrap(kek_meta.wrapped_kek.data(), kek_meta.wrapped_kek.size(),
-                        user.password_hash.data(), user.password_hash.size(),
-                        kek_meta.salt.data(), kek_meta.salt.size(),
-                        kek_raw.data(), &kek_len))
+                        user.password_hash.data(), user.password_hash.size(), kek_meta.salt.data(),
+                        kek_meta.salt.size(), kek_raw.data(), &kek_len))
             break;
 
         // re-wrap with new wrapping key (same salt)
         size_t new_wrapped_len = new_wrapped.size();
         bool wrap_ok = false;
         do {
-            if (!kek_derive_wrapping_key(new_hash.data(), new_hash.size(),
-                                         kek_meta.salt.data(), kek_meta.salt.size(),
-                                         new_wrapping_key.data(), new_wrapping_key.size()))
+            if (!kek_derive_wrapping_key(new_hash.data(), new_hash.size(), kek_meta.salt.data(),
+                                         kek_meta.salt.size(), new_wrapping_key.data(),
+                                         new_wrapping_key.size()))
                 break;
             if (!aes_kw_wrap(kek_raw.data(), kek_len, new_wrapping_key.data(),
                              new_wrapping_key.size(), new_wrapped.data(), &new_wrapped_len))
@@ -611,8 +615,7 @@ ssm_status ssm_user_change_password(ssm_handle* h, const char* username,
             break;
 
         // update wrapped_kek only (keep same salt, version, expiry)
-        const char* update_kek =
-            "UPDATE kek_metadata SET wrapped_kek = ? WHERE user_id = ?";
+        const char* update_kek = "UPDATE kek_metadata SET wrapped_kek = ? WHERE user_id = ?";
         sqlite3_stmt* stmt_k = nullptr;
         if (sqlite3_prepare_v2(h->db, update_kek, -1, &stmt_k, nullptr) != SQLITE_OK)
             break;
@@ -637,8 +640,8 @@ ssm_status ssm_user_change_password(ssm_handle* h, const char* username,
         result = SSM_ERR_INTERNAL;
     }
 
-    audit_write(h->db, username, user.id, "user_change_password", result,
-                nullptr, result == SSM_OK ? "{\"status\":\"ok\"}" : nullptr);
+    audit_write(h->db, username, user.id, "user_change_password", result, nullptr,
+                result == SSM_OK ? "{\"status\":\"ok\"}" : nullptr);
     return result;
 }
 
@@ -650,14 +653,14 @@ ssm_status ssm_kek_rotate(ssm_handle* h, const char* username) {
 
     user_row user;
     if (!users_find_by_username(h->db, username, &user)) {
-        audit_write(h->db, username, 0, "kek_rotate", SSM_ERR_AUTH,
-                    nullptr, "{\"error\":\"user not found\"}");
+        audit_write(h->db, username, 0, "kek_rotate", SSM_ERR_AUTH, nullptr,
+                    "{\"error\":\"user not found\"}");
         return SSM_ERR_AUTH;
     }
 
     if (!kek_rotate(h->db, user.id, user.password_hash.data(), user.password_hash.size())) {
-        audit_write(h->db, username, user.id, "kek_rotate", SSM_ERR_INTERNAL,
-                    nullptr, "{\"error\":\"KEK rotation failed\"}");
+        audit_write(h->db, username, user.id, "kek_rotate", SSM_ERR_INTERNAL, nullptr,
+                    "{\"error\":\"KEK rotation failed\"}");
         return SSM_ERR_INTERNAL;
     }
 

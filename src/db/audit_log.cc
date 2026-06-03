@@ -6,9 +6,8 @@
 
 namespace ssm::v1 {
 
-bool audit_log_write(sqlite3* db, int64_t user_id, const char* username,
-                     const char* operation, const char* result,
-                     const char* operation_target, const char* details) {
+bool audit_log_write(sqlite3* db, int64_t user_id, const char* username, const char* operation,
+                     const char* result, const char* operation_target, const char* details) {
     if (!db || !username || !operation || !result)
         return false;
 
@@ -56,9 +55,8 @@ bool audit_log_write(sqlite3* db, int64_t user_id, const char* username,
     return ok;
 }
 
-bool audit_log_query(sqlite3* db, const char* username, const char* operation,
-                     const char* result, int64_t limit, int64_t offset,
-                     std::vector<audit_entry>* out) {
+bool audit_log_query(sqlite3* db, const char* username, const char* operation, const char* result,
+                     int64_t limit, int64_t offset, std::vector<audit_entry>* out) {
     if (!db || !out)
         return false;
 

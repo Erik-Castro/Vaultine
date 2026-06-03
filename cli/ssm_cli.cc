@@ -1,5 +1,3 @@
-#include "ssm/ssm.h"
-
 #include <getopt.h>
 #include <unistd.h>
 
@@ -10,6 +8,8 @@
 #include <cstring>
 #include <string>
 #include <vector>
+
+#include "ssm/ssm.h"
 
 // -------------------------------------------------------------------
 // Globals
@@ -35,21 +35,27 @@ static std::string g_password;
 }
 
 static int hex_val(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
     return -1;
 }
 
 static bool hex_decode(const char* hex, unsigned char* out, size_t* out_len) {
     size_t len = std::strlen(hex);
-    if (len % 2 != 0 || len == 0) return false;
+    if (len % 2 != 0 || len == 0)
+        return false;
     *out_len = len / 2;
-    if (*out_len > 32) return false;
+    if (*out_len > 32)
+        return false;
     for (size_t i = 0; i < *out_len; ++i) {
         int hi = hex_val(hex[i * 2]);
         int lo = hex_val(hex[i * 2 + 1]);
-        if (hi < 0 || lo < 0) return false;
+        if (hi < 0 || lo < 0)
+            return false;
         out[i] = static_cast<unsigned char>((hi << 4) | lo);
     }
     return true;
@@ -58,18 +64,22 @@ static bool hex_decode(const char* hex, unsigned char* out, size_t* out_len) {
 static std::string read_password(const char* prompt) {
     if (!isatty(STDIN_FILENO)) {
         char buf[4096];
-        if (!fgets(buf, sizeof(buf), stdin)) die("failed to read password");
+        if (!fgets(buf, sizeof(buf), stdin))
+            die("failed to read password");
         size_t len = std::strlen(buf);
-        if (len > 0 && buf[len - 1] == '\n') buf[len - 1] = '\0';
+        if (len > 0 && buf[len - 1] == '\n')
+            buf[len - 1] = '\0';
         return std::string(buf);
     }
     char* pw = getpass(prompt);
-    if (!pw) die("getpass failed");
+    if (!pw)
+        die("getpass failed");
     return std::string(pw);
 }
 
 static std::string prompt_password(const char* username) {
-    if (!g_password.empty()) return g_password;
+    if (!g_password.empty())
+        return g_password;
     char prompt[256];
     std::snprintf(prompt, sizeof(prompt), "password for %s: ", username);
     return read_password(prompt);
@@ -78,9 +88,7 @@ static std::string prompt_password(const char* username) {
 // -------------------------------------------------------------------
 // Help / version
 // -------------------------------------------------------------------
-static void print_version() {
-    printf("ssm-cli version 0.1.0\n");
-}
+static void print_version() { printf("ssm-cli version 0.1.0\n"); }
 
 static void print_usage() {
     printf(
@@ -105,13 +113,13 @@ static void print_usage() {
         "  secret delete <username> <name>\n"
         "  secret list <username>\n"
         "  kek rotate <username>\n"
-          "  cache-stats      Show cache statistics\n"
-          "  audit-log <username>  Query audit log (optional: --operation, --result,\n"
-          "                        --limit, --offset)\n"
-          "  tui              Interactive terminal interface\n"
-          "  env exec <username> [--] <command> [args...]\n"
-          "  help [command]\n",
-         g_prog);
+        "  cache-stats      Show cache statistics\n"
+        "  audit-log <username>  Query audit log (optional: --operation, --result,\n"
+        "                        --limit, --offset)\n"
+        "  tui              Interactive terminal interface\n"
+        "  env exec <username> [--] <command> [args...]\n"
+        "  help [command]\n",
+        g_prog);
 }
 
 static void print_help_user() {
@@ -137,92 +145,119 @@ static void print_help_secret() {
 }
 
 static void print_help_kek() {
-    printf("kek commands:\n"
-           "  rotate <username>           Force KEK rotation\n");
+    printf(
+        "kek commands:\n"
+        "  rotate <username>           Force KEK rotation\n");
 }
 
 // -------------------------------------------------------------------
 // Command handlers
 // -------------------------------------------------------------------
 static int handle_user_register(int argc, char** argv) {
-    if (argc < 1) { print_help_user(); return 1; }
+    if (argc < 1) {
+        print_help_user();
+        return 1;
+    }
     const char* username = argv[0];
     std::string pw = prompt_password(username);
 
     ssm_handle* h = nullptr;
-    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
-                              g_db_key_len);
-    if (st != SSM_OK) die_status(st, "ssm_init");
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
 
     st = ssm_user_register(h, username, pw.c_str());
     ssm_destroy(h);
-    if (st != SSM_OK) die_status(st, "user register");
+    if (st != SSM_OK)
+        die_status(st, "user register");
     printf("OK: user '%s' registered\n", username);
     return 0;
 }
 
 static int handle_user_auth(int argc, char** argv) {
-    if (argc < 1) { print_help_user(); return 1; }
+    if (argc < 1) {
+        print_help_user();
+        return 1;
+    }
     const char* username = argv[0];
     std::string pw = prompt_password(username);
 
     ssm_handle* h = nullptr;
-    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
-                              g_db_key_len);
-    if (st != SSM_OK) die_status(st, "ssm_init");
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
 
     int valid = 0;
     st = ssm_user_authenticate(h, username, pw.c_str(), &valid);
     ssm_destroy(h);
-    if (st != SSM_OK) die_status(st, "user auth");
-    if (g_json) { printf("{\"authenticated\":%s}\n", valid ? "true" : "false"); }
-    else { printf("%s\n", valid ? "OK: authenticated" : "FAIL: invalid credentials"); }
+    if (st != SSM_OK)
+        die_status(st, "user auth");
+    if (g_json) {
+        printf("{\"authenticated\":%s}\n", valid ? "true" : "false");
+    } else {
+        printf("%s\n", valid ? "OK: authenticated" : "FAIL: invalid credentials");
+    }
     return valid ? 0 : 1;
 }
 
 static int handle_user_delete(int argc, char** argv) {
-    if (argc < 1) { print_help_user(); return 1; }
+    if (argc < 1) {
+        print_help_user();
+        return 1;
+    }
     const char* username = argv[0];
 
-    fprintf(stderr, "WARNING: this will permanently delete user '%s' "
-                    "and all their data.\n", username);
+    fprintf(stderr,
+            "WARNING: this will permanently delete user '%s' "
+            "and all their data.\n",
+            username);
     fprintf(stderr, "Type 'yes' to confirm: ");
     char confirm[64];
-    if (!fgets(confirm, sizeof(confirm), stdin)) die("read failed");
-    if (std::strcmp(confirm, "yes\n") != 0) { printf("aborted\n"); return 1; }
+    if (!fgets(confirm, sizeof(confirm), stdin))
+        die("read failed");
+    if (std::strcmp(confirm, "yes\n") != 0) {
+        printf("aborted\n");
+        return 1;
+    }
 
     std::string pw = prompt_password(username);
 
     ssm_handle* h = nullptr;
-    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
-                              g_db_key_len);
-    if (st != SSM_OK) die_status(st, "ssm_init");
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
 
     st = ssm_user_delete(h, username, pw.c_str());
     ssm_destroy(h);
-    if (st != SSM_OK) die_status(st, "user delete");
+    if (st != SSM_OK)
+        die_status(st, "user delete");
     printf("OK: user '%s' and all data deleted\n", username);
     return 0;
 }
 
 static int handle_user_change_password(int argc, char** argv) {
-    if (argc < 1) { print_help_user(); return 1; }
+    if (argc < 1) {
+        print_help_user();
+        return 1;
+    }
     const char* username = argv[0];
 
     std::string old_pw = prompt_password(username);
     char prompt[256];
     std::snprintf(prompt, sizeof(prompt), "new password for %s: ", username);
     std::string new_pw = read_password(prompt);
-    if (new_pw.empty()) die("new password cannot be empty");
+    if (new_pw.empty())
+        die("new password cannot be empty");
 
     ssm_handle* h = nullptr;
-    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
-                              g_db_key_len);
-    if (st != SSM_OK) die_status(st, "ssm_init");
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
 
     st = ssm_user_change_password(h, username, old_pw.c_str(), new_pw.c_str());
     ssm_destroy(h);
-    if (st != SSM_OK) die_status(st, "change password");
+    if (st != SSM_OK)
+        die_status(st, "change password");
     printf("OK: password changed for '%s'\n", username);
     return 0;
 }
@@ -231,7 +266,10 @@ static int handle_user_change_password(int argc, char** argv) {
 // secret handlers
 // -------------------------------------------------------------------
 static int handle_secret_store(int argc, char** argv) {
-    if (argc < 3) { print_help_secret(); return 1; }
+    if (argc < 3) {
+        print_help_secret();
+        return 1;
+    }
     const char* username = argv[0];
     const char* name = argv[1];
     const char* key_path = argv[2];
@@ -249,15 +287,22 @@ static int handle_secret_store(int argc, char** argv) {
 
     // read key file
     FILE* fk = std::fopen(key_path, "rb");
-    if (!fk) { perror("fopen key_file"); return 1; }
+    if (!fk) {
+        perror("fopen key_file");
+        return 1;
+    }
     std::fseek(fk, 0, SEEK_END);
     long klen = std::ftell(fk);
     std::fseek(fk, 0, SEEK_SET);
-    if (klen <= 0) { fclose(fk); die("empty key file"); }
+    if (klen <= 0) {
+        fclose(fk);
+        die("empty key file");
+    }
     auto* key_buf = new unsigned char[static_cast<size_t>(klen)];
-    if (std::fread(key_buf, 1, static_cast<size_t>(klen), fk)
-            != static_cast<size_t>(klen)) {
-        fclose(fk); delete[] key_buf; die("fread key_file failed");
+    if (std::fread(key_buf, 1, static_cast<size_t>(klen), fk) != static_cast<size_t>(klen)) {
+        fclose(fk);
+        delete[] key_buf;
+        die("fread key_file failed");
     }
     fclose(fk);
 
@@ -266,7 +311,11 @@ static int handle_secret_store(int argc, char** argv) {
     size_t pub_len = 0;
     if (pub_path) {
         FILE* fp = std::fopen(pub_path, "rb");
-        if (!fp) { perror("fopen pub_file"); delete[] key_buf; return 1; }
+        if (!fp) {
+            perror("fopen pub_file");
+            delete[] key_buf;
+            return 1;
+        }
         std::fseek(fp, 0, SEEK_END);
         long plen = std::ftell(fp);
         std::fseek(fp, 0, SEEK_SET);
@@ -274,7 +323,9 @@ static int handle_secret_store(int argc, char** argv) {
             pub_buf = new unsigned char[static_cast<size_t>(plen)];
             pub_len = static_cast<size_t>(plen);
             if (std::fread(pub_buf, 1, pub_len, fp) != pub_len) {
-                fclose(fp); delete[] key_buf; delete[] pub_buf;
+                fclose(fp);
+                delete[] key_buf;
+                delete[] pub_buf;
                 die("fread pub_file failed");
             }
         }
@@ -284,20 +335,21 @@ static int handle_secret_store(int argc, char** argv) {
     std::string pw = prompt_password(username);
 
     ssm_handle* h = nullptr;
-    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
-                              g_db_key_len);
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
     if (st != SSM_OK) {
-        delete[] key_buf; delete[] pub_buf;
+        delete[] key_buf;
+        delete[] pub_buf;
         die_status(st, "ssm_init");
     }
 
-    st = ssm_secret_store(h, username, key_buf, static_cast<size_t>(klen),
-                          pub_buf, pub_len, name, description);
+    st = ssm_secret_store(h, username, key_buf, static_cast<size_t>(klen), pub_buf, pub_len, name,
+                          description);
     ssm_destroy(h);
     delete[] key_buf;
     delete[] pub_buf;
 
-    if (st != SSM_OK) die_status(st, "secret store");
+    if (st != SSM_OK)
+        die_status(st, "secret store");
     printf("OK: secret '%s' stored for '%s'\n", name, username);
     return 0;
 }
@@ -312,7 +364,10 @@ struct get_ctx {
 };
 
 static int handle_secret_get(int argc, char** argv) {
-    if (argc < 2) { print_help_secret(); return 1; }
+    if (argc < 2) {
+        print_help_secret();
+        return 1;
+    }
     const char* username = argv[0];
     const char* name = argv[1];
     const char* out_path = nullptr;
@@ -328,9 +383,9 @@ static int handle_secret_get(int argc, char** argv) {
     std::string pw = prompt_password(username);
 
     ssm_handle* h = nullptr;
-    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
-                              g_db_key_len);
-    if (st != SSM_OK) die_status(st, "ssm_init");
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
 
     // try with generous buffer, retry if needed
     size_t priv_cap = 65536;
@@ -355,13 +410,19 @@ static int handle_secret_get(int argc, char** argv) {
     ssm_destroy(h);
 
     if (st != SSM_OK) {
-        delete[] priv; delete[] pub;
+        delete[] priv;
+        delete[] pub;
         die_status(st, "secret get");
     }
 
     if (out_path) {
         FILE* f = std::fopen(out_path, "wb");
-        if (!f) { perror("fopen --out"); delete[] priv; delete[] pub; return 1; }
+        if (!f) {
+            perror("fopen --out");
+            delete[] priv;
+            delete[] pub;
+            return 1;
+        }
         std::fwrite(priv, 1, priv_len, f);
         std::fclose(f);
         printf("OK: private key (%zu bytes) written to %s\n", priv_len, out_path);
@@ -372,7 +433,12 @@ static int handle_secret_get(int argc, char** argv) {
 
     if (pub_out_path && pub_len > 0) {
         FILE* f = std::fopen(pub_out_path, "wb");
-        if (!f) { perror("fopen --pub-out"); delete[] priv; delete[] pub; return 1; }
+        if (!f) {
+            perror("fopen --pub-out");
+            delete[] priv;
+            delete[] pub;
+            return 1;
+        }
         std::fwrite(pub, 1, pub_len, f);
         std::fclose(f);
         printf("OK: public key (%zu bytes) written to %s\n", pub_len, pub_out_path);
@@ -384,18 +450,22 @@ static int handle_secret_get(int argc, char** argv) {
 }
 
 static int handle_secret_delete(int argc, char** argv) {
-    if (argc < 2) { print_help_secret(); return 1; }
+    if (argc < 2) {
+        print_help_secret();
+        return 1;
+    }
     const char* username = argv[0];
     const char* name = argv[1];
     std::string pw = prompt_password(username);
 
     ssm_handle* h = nullptr;
-    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
-                              g_db_key_len);
-    if (st != SSM_OK) die_status(st, "ssm_init");
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
     st = ssm_secret_delete(h, username, name);
     ssm_destroy(h);
-    if (st != SSM_OK) die_status(st, "secret delete");
+    if (st != SSM_OK)
+        die_status(st, "secret delete");
     printf("OK: secret '%s' deleted\n", name);
     return 0;
 }
@@ -407,39 +477,42 @@ struct list_item {
     size_t pub_len;
 };
 
-static void list_callback(const char* name, const char* description,
-                           const char* updated_at, size_t public_key_len,
-                           void* user_data) {
+static void list_callback(const char* name, const char* description, const char* updated_at,
+                          size_t public_key_len, void* user_data) {
     auto* items = static_cast<std::vector<list_item>*>(user_data);
-    items->push_back({name ? name : "",
-                      description ? description : "",
-                      updated_at ? updated_at : "",
-                      public_key_len});
+    items->push_back({name ? name : "", description ? description : "",
+                      updated_at ? updated_at : "", public_key_len});
 }
 
 static int handle_secret_list(int argc, char** argv) {
-    if (argc < 1) { print_help_secret(); return 1; }
+    if (argc < 1) {
+        print_help_secret();
+        return 1;
+    }
     const char* username = argv[0];
     std::string pw = prompt_password(username);
 
     ssm_handle* h = nullptr;
-    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
-                              g_db_key_len);
-    if (st != SSM_OK) die_status(st, "ssm_init");
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
 
     std::vector<list_item> items;
     st = ssm_secret_list(h, username, list_callback, &items);
     ssm_destroy(h);
-    if (st != SSM_OK) die_status(st, "secret list");
+    if (st != SSM_OK)
+        die_status(st, "secret list");
 
     if (g_json) {
         printf("[");
         for (size_t i = 0; i < items.size(); ++i) {
-            if (i > 0) printf(",");
-            printf("{\"name\":\"%s\",\"description\":\"%s\","
-                   "\"updated_at\":\"%s\",\"public_key_len\":%zu}",
-                   items[i].name.c_str(), items[i].desc.c_str(),
-                   items[i].updated_at.c_str(), items[i].pub_len);
+            if (i > 0)
+                printf(",");
+            printf(
+                "{\"name\":\"%s\",\"description\":\"%s\","
+                "\"updated_at\":\"%s\",\"public_key_len\":%zu}",
+                items[i].name.c_str(), items[i].desc.c_str(), items[i].updated_at.c_str(),
+                items[i].pub_len);
         }
         printf("]\n");
     } else {
@@ -447,8 +520,7 @@ static int handle_secret_list(int argc, char** argv) {
             printf("no secrets for '%s'\n", username);
         } else {
             for (auto& item : items) {
-                printf("%-30s  %s  pub:%zuB  %s\n",
-                       item.name.c_str(), item.desc.c_str(),
+                printf("%-30s  %s  pub:%zuB  %s\n", item.name.c_str(), item.desc.c_str(),
                        item.pub_len, item.updated_at.c_str());
             }
         }
@@ -460,17 +532,21 @@ static int handle_secret_list(int argc, char** argv) {
 // kek handlers
 // -------------------------------------------------------------------
 static int handle_kek_rotate(int argc, char** argv) {
-    if (argc < 1) { print_help_kek(); return 1; }
+    if (argc < 1) {
+        print_help_kek();
+        return 1;
+    }
     const char* username = argv[0];
     std::string pw = prompt_password(username);
 
     ssm_handle* h = nullptr;
-    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
-                              g_db_key_len);
-    if (st != SSM_OK) die_status(st, "ssm_init");
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
     st = ssm_kek_rotate(h, username);
     ssm_destroy(h);
-    if (st != SSM_OK) die_status(st, "kek rotate");
+    if (st != SSM_OK)
+        die_status(st, "kek rotate");
     printf("OK: KEK rotated for '%s'\n", username);
     return 0;
 }
@@ -487,24 +563,23 @@ struct audit_item {
     std::string timestamp;
 };
 
-static void audit_callback(int64_t id, int64_t user_id, const char* username,
-                            const char* operation, const char* operation_target,
-                            const char* details, const char* result,
-                            const char* timestamp, void* user_data) {
+static void audit_callback(int64_t id, int64_t user_id, const char* username, const char* operation,
+                           const char* operation_target, const char* details, const char* result,
+                           const char* timestamp, void* user_data) {
     auto* items = static_cast<std::vector<audit_item>*>(user_data);
-    (void)id; (void)user_id;
-    items->push_back({username ? username : "",
-                      operation ? operation : "",
-                      operation_target ? operation_target : "",
-                      details ? details : "",
-                      result ? result : "",
-                      timestamp ? timestamp : ""});
+    (void) id;
+    (void) user_id;
+    items->push_back({username ? username : "", operation ? operation : "",
+                      operation_target ? operation_target : "", details ? details : "",
+                      result ? result : "", timestamp ? timestamp : ""});
 }
 
 static int handle_audit_log(int argc, char** argv) {
     if (argc < 1) {
-        fprintf(stderr, "usage: %s audit-log <username> [--operation <op>] "
-                "[--result <res>] [--limit <n>] [--offset <n>]\n", g_prog);
+        fprintf(stderr,
+                "usage: %s audit-log <username> [--operation <op>] "
+                "[--result <res>] [--limit <n>] [--offset <n>]\n",
+                g_prog);
         return 1;
     }
     const char* username = argv[0];
@@ -525,26 +600,27 @@ static int handle_audit_log(int argc, char** argv) {
     }
 
     ssm_handle* h = nullptr;
-    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
-                              g_db_key_len);
-    if (st != SSM_OK) die_status(st, "ssm_init");
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
 
     std::vector<audit_item> items;
-    st = ssm_audit_log_query(h, username, operation, result, limit, offset,
-                              audit_callback, &items);
+    st = ssm_audit_log_query(h, username, operation, result, limit, offset, audit_callback, &items);
     ssm_destroy(h);
-    if (st != SSM_OK) die_status(st, "audit-log query");
+    if (st != SSM_OK)
+        die_status(st, "audit-log query");
 
     if (g_json) {
         printf("[");
         for (size_t i = 0; i < items.size(); ++i) {
-            if (i > 0) printf(",");
-            printf("{\"username\":\"%s\",\"operation\":\"%s\","
-                   "\"target\":\"%s\",\"details\":%s,\"result\":\"%s\","
-                   "\"timestamp\":\"%s\"}",
-                   items[i].username.c_str(), items[i].operation.c_str(),
-                   items[i].target.c_str(), items[i].details.c_str(),
-                   items[i].result.c_str(), items[i].timestamp.c_str());
+            if (i > 0)
+                printf(",");
+            printf(
+                "{\"username\":\"%s\",\"operation\":\"%s\","
+                "\"target\":\"%s\",\"details\":%s,\"result\":\"%s\","
+                "\"timestamp\":\"%s\"}",
+                items[i].username.c_str(), items[i].operation.c_str(), items[i].target.c_str(),
+                items[i].details.c_str(), items[i].result.c_str(), items[i].timestamp.c_str());
         }
         printf("]\n");
     } else {
@@ -554,8 +630,7 @@ static int handle_audit_log(int argc, char** argv) {
             printf("%-20s %-18s %-12s %s\n", "operation", "target", "result", "timestamp");
             printf("%-20s %-18s %-12s %s\n", "---------", "------", "------", "---------");
             for (auto& item : items) {
-                printf("%-20s %-18s %-12s %s\n",
-                       item.operation.c_str(), item.target.c_str(),
+                printf("%-20s %-18s %-12s %s\n", item.operation.c_str(), item.target.c_str(),
                        item.result.c_str(), item.timestamp.c_str());
             }
             printf("(%zu entries)\n", items.size());
@@ -569,24 +644,25 @@ static int handle_audit_log(int argc, char** argv) {
 // -------------------------------------------------------------------
 static int handle_cache_stats(int /*argc*/, char** /*argv*/) {
     ssm_handle* h = nullptr;
-    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
-                              g_db_key_len);
-    if (st != SSM_OK) die_status(st, "ssm_init");
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
 
     ssm_cache_stats stats{};
     st = ssm_cache_get_stats(h, &stats);
     ssm_destroy(h);
-    if (st != SSM_OK) die_status(st, "cache stats");
+    if (st != SSM_OK)
+        die_status(st, "cache stats");
 
     if (g_json) {
-        printf("{\"total_entries\":%zu,\"valid_entries\":%zu,"
-               "\"hit_count\":%zu,\"miss_count\":%zu}\n",
-               stats.total_entries, stats.valid_entries,
-               stats.hit_count, stats.miss_count);
+        printf(
+            "{\"total_entries\":%zu,\"valid_entries\":%zu,"
+            "\"hit_count\":%zu,\"miss_count\":%zu}\n",
+            stats.total_entries, stats.valid_entries, stats.hit_count, stats.miss_count);
     } else {
         double hit_rate = (stats.hit_count + stats.miss_count) > 0
-            ? (100.0 * stats.hit_count) / (stats.hit_count + stats.miss_count)
-            : 0.0;
+                              ? (100.0 * stats.hit_count) / (stats.hit_count + stats.miss_count)
+                              : 0.0;
         printf("Cache Statistics:\n");
         printf("  Total slots:     %zu\n", stats.total_entries);
         printf("  Valid entries:   %zu\n", stats.valid_entries);
@@ -601,9 +677,10 @@ static int handle_cache_stats(int /*argc*/, char** /*argv*/) {
 // env handlers
 // -------------------------------------------------------------------
 static void print_help_env() {
-    printf("env commands:\n"
-           "  exec <username> [--] <command> [args...]\n"
-           "               Inject secrets as env vars and exec command\n");
+    printf(
+        "env commands:\n"
+        "  exec <username> [--] <command> [args...]\n"
+        "               Inject secrets as env vars and exec command\n");
 }
 
 static const char BASE64_TABLE[] =
@@ -628,9 +705,12 @@ static std::string base64_encode(const unsigned char* data, size_t len) {
 static bool is_printable(const unsigned char* data, size_t len) {
     for (size_t i = 0; i < len; ++i) {
         unsigned char c = data[i];
-        if (c == 0) return false;
-        if (c < 0x20 && c != '\t' && c != '\n' && c != '\r') return false;
-        if (c >= 0x7F) return false;
+        if (c == 0)
+            return false;
+        if (c < 0x20 && c != '\t' && c != '\n' && c != '\r')
+            return false;
+        if (c >= 0x7F)
+            return false;
     }
     return true;
 }
@@ -639,35 +719,47 @@ static std::string sanitize_env_name(const char* name) {
     std::string result = "SSM_";
     for (const char* p = name; *p; ++p) {
         char c = *p;
-        if (c >= 'a' && c <= 'z') result += static_cast<char>(c - 32);
-        else if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) result += c;
-        else result += '_';
+        if (c >= 'a' && c <= 'z')
+            result += static_cast<char>(c - 32);
+        else if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
+            result += c;
+        else
+            result += '_';
     }
     return result;
 }
 
 static int handle_env_exec(int argc, char** argv) {
-    if (argc < 2) { print_help_env(); return 1; }
+    if (argc < 2) {
+        print_help_env();
+        return 1;
+    }
     const char* username = argv[0];
 
     // find command args (after optional -- separator)
     int cmd_start = 1;
-    if (std::strcmp(argv[1], "--") == 0) cmd_start = 2;
-    if (cmd_start >= argc) { print_help_env(); return 1; }
+    if (std::strcmp(argv[1], "--") == 0)
+        cmd_start = 2;
+    if (cmd_start >= argc) {
+        print_help_env();
+        return 1;
+    }
     int cmd_argc = argc - cmd_start;
     char** cmd_argv = argv + cmd_start;
 
     std::string pw = prompt_password(username);
 
     ssm_handle* h = nullptr;
-    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
-                              g_db_key_len);
-    if (st != SSM_OK) die_status(st, "ssm_init");
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
+    if (st != SSM_OK)
+        die_status(st, "ssm_init");
 
     int valid = 0;
     st = ssm_user_authenticate(h, username, pw.c_str(), &valid);
-    if (st != SSM_OK) die_status(st, "user auth");
-    if (!valid) die("authentication failed");
+    if (st != SSM_OK)
+        die_status(st, "user auth");
+    if (!valid)
+        die("authentication failed");
 
     // collect secret names
     struct env_item {
@@ -676,13 +768,13 @@ static int handle_env_exec(int argc, char** argv) {
     };
     std::vector<env_item> names;
 
-    auto cb = [](const char* name, const char*, const char*, size_t,
-                 void* user) {
+    auto cb = [](const char* name, const char*, const char*, size_t, void* user) {
         auto* v = static_cast<std::vector<env_item>*>(user);
         v->push_back({name ? name : "", ""});
     };
     st = ssm_secret_list(h, username, cb, &names);
-    if (st != SSM_OK) die_status(st, "secret list");
+    if (st != SSM_OK)
+        die_status(st, "secret list");
 
     // fetch and set each secret
     for (auto& item : names) {
@@ -692,20 +784,18 @@ static int handle_env_exec(int argc, char** argv) {
         auto* priv = new unsigned char[priv_cap];
         size_t priv_len = priv_cap;
         size_t pub_len = 0;
-        st = ssm_secret_get(h, username, item.name.c_str(),
-                            priv, &priv_len, nullptr, &pub_len);
+        st = ssm_secret_get(h, username, item.name.c_str(), priv, &priv_len, nullptr, &pub_len);
         if (st == SSM_ERR_INTERNAL && priv_len > priv_cap) {
             delete[] priv;
             priv_cap = priv_len;
             priv = new unsigned char[priv_cap];
             priv_len = priv_cap;
-            st = ssm_secret_get(h, username, item.name.c_str(),
-                                priv, &priv_len, nullptr, &pub_len);
+            st = ssm_secret_get(h, username, item.name.c_str(), priv, &priv_len, nullptr, &pub_len);
         }
         if (st != SSM_OK) {
             delete[] priv;
-            fprintf(stderr, "warning: skipping '%s': %s\n",
-                    item.name.c_str(), ssm_status_to_string(st));
+            fprintf(stderr, "warning: skipping '%s': %s\n", item.name.c_str(),
+                    ssm_status_to_string(st));
             continue;
         }
 
@@ -723,7 +813,8 @@ static int handle_env_exec(int argc, char** argv) {
         // wipe secret from memory
         if (priv_len > 0) {
             volatile unsigned char* p = priv;
-            for (size_t i = 0; i < priv_len; ++i) p[i] = 0;
+            for (size_t i = 0; i < priv_len; ++i)
+                p[i] = 0;
         }
         delete[] priv;
     }
@@ -757,11 +848,8 @@ static const cmd_map user_cmds[] = {
 };
 
 static const cmd_map secret_cmds[] = {
-    {"store", handle_secret_store},
-    {"get", handle_secret_get},
-    {"delete", handle_secret_delete},
-    {"list", handle_secret_list},
-    {nullptr, nullptr},
+    {"store", handle_secret_store}, {"get", handle_secret_get}, {"delete", handle_secret_delete},
+    {"list", handle_secret_list},   {nullptr, nullptr},
 };
 
 static const cmd_map kek_cmds[] = {
@@ -775,7 +863,8 @@ static const cmd_map env_cmds[] = {
 };
 
 static int dispatch(const cmd_map* cmds, int argc, char** argv) {
-    if (argc < 1) return 1;
+    if (argc < 1)
+        return 1;
     for (int i = 0; cmds[i].name; ++i) {
         if (std::strcmp(argv[0], cmds[i].name) == 0)
             return cmds[i].handler(argc - 1, argv + 1);
@@ -808,16 +897,28 @@ int main(int argc, char** argv) {
     int opt;
     while ((opt = getopt_long(argc, argv, "+h", long_opts, nullptr)) != -1) {
         switch (opt) {
-            case 'd': g_db_path = optarg; break;
+            case 'd':
+                g_db_path = optarg;
+                break;
             case 'k':
                 if (!hex_decode(optarg, g_db_key, &g_db_key_len))
                     die("invalid --db-key (must be hex, up to 64 chars)");
                 break;
-            case OPT_PASSWORD: g_password = optarg; break;
-            case OPT_JSON: g_json = true; break;
-            case 'v': print_version(); return 0;
-            case 'h': print_usage(); return 0;
-            default: print_usage(); return 1;
+            case OPT_PASSWORD:
+                g_password = optarg;
+                break;
+            case OPT_JSON:
+                g_json = true;
+                break;
+            case 'v':
+                print_version();
+                return 0;
+            case 'h':
+                print_usage();
+                return 0;
+            default:
+                print_usage();
+                return 1;
         }
     }
 
@@ -832,11 +933,16 @@ int main(int argc, char** argv) {
 
     if (std::strcmp(cmd, "help") == 0) {
         if (remaining >= 1) {
-            if (std::strcmp(cmd_argv[0], "user") == 0) print_help_user();
-            else if (std::strcmp(cmd_argv[0], "secret") == 0) print_help_secret();
-            else if (std::strcmp(cmd_argv[0], "kek") == 0) print_help_kek();
-            else if (std::strcmp(cmd_argv[0], "env") == 0) print_help_env();
-            else print_usage();
+            if (std::strcmp(cmd_argv[0], "user") == 0)
+                print_help_user();
+            else if (std::strcmp(cmd_argv[0], "secret") == 0)
+                print_help_secret();
+            else if (std::strcmp(cmd_argv[0], "kek") == 0)
+                print_help_kek();
+            else if (std::strcmp(cmd_argv[0], "env") == 0)
+                print_help_env();
+            else
+                print_usage();
         } else {
             print_usage();
         }

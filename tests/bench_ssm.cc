@@ -1,9 +1,9 @@
-#include "ssm/ssm.h"
-
 #include <benchmark/benchmark.h>
 
 #include <cstdio>
 #include <cstring>
+
+#include "ssm/ssm.h"
 
 static void BM_UserRegister(benchmark::State& state) {
     for (auto _ : state) {

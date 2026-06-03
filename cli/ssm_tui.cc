@@ -1,6 +1,4 @@
 // ssm_tui.cc — ncurses TUI for Vaultine
-#include "ssm/ssm.h"
-
 #include <ncurses.h>
 
 #include <algorithm>
@@ -10,6 +8,8 @@
 #include <locale>
 #include <string>
 #include <vector>
+
+#include "ssm/ssm.h"
 
 // -----------------------------------------------------------
 // Extern globals from ssm_cli.cc
@@ -69,7 +69,7 @@ static void wait_for_key();
 static std::vector<unsigned char> read_file(const char* path);
 static bool write_file(const char* path, const unsigned char* data, size_t len);
 static void list_callback(const char* name, const char* desc, const char* updated_at,
-                           size_t pub_len, void* user);
+                          size_t pub_len, void* user);
 
 static Screen screen_main();
 static Screen screen_user_menu();
@@ -265,7 +265,7 @@ static bool write_file(const char* path, const unsigned char* data, size_t len) 
 }
 
 static void list_callback(const char* name, const char* desc, const char* updated_at,
-                           size_t pub_len, void* user) {
+                          size_t pub_len, void* user) {
     auto* items = static_cast<std::vector<list_item>*>(user);
     items->push_back({name ? name : "", desc ? desc : "", updated_at ? updated_at : "", pub_len});
 }
@@ -274,16 +274,22 @@ static void list_callback(const char* name, const char* desc, const char* update
 // Screen: Main Menu
 // ============================================================
 static Screen screen_main() {
-    int sel = menu_select({"User Management", "Secret Management", "KEK Rotation",
-                           "Database Info", "Cache Statistics", "Exit"},
+    int sel = menu_select({"User Management", "Secret Management", "KEK Rotation", "Database Info",
+                           "Cache Statistics", "Exit"},
                           "MAIN MENU");
     switch (sel) {
-        case 0: return SCREEN_USER_MENU;
-        case 1: return SCREEN_SECRET_MENU;
-        case 2: return SCREEN_KEK_ROTATE;
-        case 3: return SCREEN_DB_INFO;
-        case 4: return SCREEN_CACHE_STATS;
-        default: return SCREEN_EXIT;
+        case 0:
+            return SCREEN_USER_MENU;
+        case 1:
+            return SCREEN_SECRET_MENU;
+        case 2:
+            return SCREEN_KEK_ROTATE;
+        case 3:
+            return SCREEN_DB_INFO;
+        case 4:
+            return SCREEN_CACHE_STATS;
+        default:
+            return SCREEN_EXIT;
     }
 }
 
@@ -294,11 +300,16 @@ static Screen screen_user_menu() {
     int sel = menu_select({"Register", "Authenticate", "Delete", "Change Password", "Back"},
                           "USER MANAGEMENT");
     switch (sel) {
-        case 0: return SCREEN_USER_REGISTER;
-        case 1: return SCREEN_USER_AUTH;
-        case 2: return SCREEN_USER_DELETE;
-        case 3: return SCREEN_USER_CHANGE_PW;
-        default: return SCREEN_MAIN;
+        case 0:
+            return SCREEN_USER_REGISTER;
+        case 1:
+            return SCREEN_USER_AUTH;
+        case 2:
+            return SCREEN_USER_DELETE;
+        case 3:
+            return SCREEN_USER_CHANGE_PW;
+        default:
+            return SCREEN_MAIN;
     }
 }
 
@@ -318,11 +329,13 @@ static Screen screen_user_register() {
 
     mvprintw(y, 4, "Username: ");
     std::string username = get_input(y++, 14, 64, false);
-    if (username.empty()) return SCREEN_USER_MENU;
+    if (username.empty())
+        return SCREEN_USER_MENU;
 
     mvprintw(y, 4, "Password: ");
     std::string password = get_input(y++, 14, 256, true);
-    if (password.empty()) return SCREEN_USER_MENU;
+    if (password.empty())
+        return SCREEN_USER_MENU;
 
     mvprintw(y, 4, "Confirm:  ");
     std::string confirm = get_input(y++, 14, 256, true);
@@ -367,11 +380,13 @@ static Screen screen_user_auth() {
 
     mvprintw(y, 4, "Username: ");
     std::string username = get_input(y++, 14, 64, false);
-    if (username.empty()) return SCREEN_USER_MENU;
+    if (username.empty())
+        return SCREEN_USER_MENU;
 
     mvprintw(y, 4, "Password: ");
     std::string password = get_input(y++, 14, 256, true);
-    if (password.empty()) return SCREEN_USER_MENU;
+    if (password.empty())
+        return SCREEN_USER_MENU;
 
     mvprintw(y + 1, 4, "Processing...");
     refresh();
@@ -408,11 +423,13 @@ static Screen screen_user_delete() {
 
     mvprintw(y, 4, "Username: ");
     std::string username = get_input(y++, 14, 64, false);
-    if (username.empty()) return SCREEN_USER_MENU;
+    if (username.empty())
+        return SCREEN_USER_MENU;
 
     mvprintw(y, 4, "Password: ");
     std::string password = get_input(y++, 14, 256, true);
-    if (password.empty()) return SCREEN_USER_MENU;
+    if (password.empty())
+        return SCREEN_USER_MENU;
 
     if (!confirm_dialog("Are you sure you want to delete this user and all data?"))
         return SCREEN_USER_MENU;
@@ -450,15 +467,18 @@ static Screen screen_user_change_pw() {
 
     mvprintw(y, 4, "Username:   ");
     std::string username = get_input(y++, 14, 64, false);
-    if (username.empty()) return SCREEN_USER_MENU;
+    if (username.empty())
+        return SCREEN_USER_MENU;
 
     mvprintw(y, 4, "Old password: ");
     std::string old_pw = get_input(y++, 17, 256, true);
-    if (old_pw.empty()) return SCREEN_USER_MENU;
+    if (old_pw.empty())
+        return SCREEN_USER_MENU;
 
     mvprintw(y, 4, "New password: ");
     std::string new_pw = get_input(y++, 17, 256, true);
-    if (new_pw.empty()) return SCREEN_USER_MENU;
+    if (new_pw.empty())
+        return SCREEN_USER_MENU;
 
     mvprintw(y, 4, "Confirm:      ");
     std::string confirm = get_input(y++, 17, 256, true);
@@ -492,11 +512,16 @@ static Screen screen_user_change_pw() {
 static Screen screen_secret_menu() {
     int sel = menu_select({"Store", "Get", "Delete", "List", "Back"}, "SECRET MANAGEMENT");
     switch (sel) {
-        case 0: return SCREEN_SECRET_STORE;
-        case 1: return SCREEN_SECRET_GET;
-        case 2: return SCREEN_SECRET_DELETE;
-        case 3: return SCREEN_SECRET_LIST;
-        default: return SCREEN_MAIN;
+        case 0:
+            return SCREEN_SECRET_STORE;
+        case 1:
+            return SCREEN_SECRET_GET;
+        case 2:
+            return SCREEN_SECRET_DELETE;
+        case 3:
+            return SCREEN_SECRET_LIST;
+        default:
+            return SCREEN_MAIN;
     }
 }
 
@@ -516,19 +541,23 @@ static Screen screen_secret_store() {
 
     mvprintw(y, 4, "Username:     ");
     std::string username = get_input(y++, 17, 64, false);
-    if (username.empty()) return SCREEN_SECRET_MENU;
+    if (username.empty())
+        return SCREEN_SECRET_MENU;
 
     mvprintw(y, 4, "Password:     ");
     std::string password = get_input(y++, 17, 256, true);
-    if (password.empty()) return SCREEN_SECRET_MENU;
+    if (password.empty())
+        return SCREEN_SECRET_MENU;
 
     mvprintw(y, 4, "Name:         ");
     std::string name = get_input(y++, 17, 64, false);
-    if (name.empty()) return SCREEN_SECRET_MENU;
+    if (name.empty())
+        return SCREEN_SECRET_MENU;
 
     mvprintw(y, 4, "Key file:     ");
     std::string key_path = get_input(y++, 17, 256, false);
-    if (key_path.empty()) return SCREEN_SECRET_MENU;
+    if (key_path.empty())
+        return SCREEN_SECRET_MENU;
 
     mvprintw(y, 4, "Pub key file: ");
     std::string pub_path = get_input(y++, 17, 256, false);
@@ -565,9 +594,8 @@ static Screen screen_secret_store() {
         if (st == SSM_OK) {
             const unsigned char* pub_ptr = pub_data.empty() ? nullptr : pub_data.data();
             size_t pub_len = pub_data.size();
-            st = ssm_secret_store(h, username.c_str(), key_data.data(), key_data.size(),
-                                  pub_ptr, pub_len, name.c_str(),
-                                  desc.empty() ? nullptr : desc.c_str());
+            st = ssm_secret_store(h, username.c_str(), key_data.data(), key_data.size(), pub_ptr,
+                                  pub_len, name.c_str(), desc.empty() ? nullptr : desc.c_str());
             ssm_destroy(h);
         }
         show_notice(st == SSM_OK ? "Secret stored successfully!" : ssm_status_to_string(st),
@@ -593,15 +621,18 @@ static Screen screen_secret_get() {
 
     mvprintw(y, 4, "Username: ");
     std::string username = get_input(y++, 14, 64, false);
-    if (username.empty()) return SCREEN_SECRET_MENU;
+    if (username.empty())
+        return SCREEN_SECRET_MENU;
 
     mvprintw(y, 4, "Password: ");
     std::string password = get_input(y++, 14, 256, true);
-    if (password.empty()) return SCREEN_SECRET_MENU;
+    if (password.empty())
+        return SCREEN_SECRET_MENU;
 
     mvprintw(y, 4, "Name:     ");
     std::string name = get_input(y++, 14, 64, false);
-    if (name.empty()) return SCREEN_SECRET_MENU;
+    if (name.empty())
+        return SCREEN_SECRET_MENU;
 
     mvprintw(y + 1, 4, "Processing...");
     refresh();
@@ -720,15 +751,18 @@ static Screen screen_secret_delete() {
 
     mvprintw(y, 4, "Username: ");
     std::string username = get_input(y++, 14, 64, false);
-    if (username.empty()) return SCREEN_SECRET_MENU;
+    if (username.empty())
+        return SCREEN_SECRET_MENU;
 
     mvprintw(y, 4, "Password: ");
     std::string password = get_input(y++, 14, 256, true);
-    if (password.empty()) return SCREEN_SECRET_MENU;
+    if (password.empty())
+        return SCREEN_SECRET_MENU;
 
     mvprintw(y, 4, "Name:     ");
     std::string name = get_input(y++, 14, 64, false);
-    if (name.empty()) return SCREEN_SECRET_MENU;
+    if (name.empty())
+        return SCREEN_SECRET_MENU;
 
     if (!confirm_dialog("Delete this secret permanently?"))
         return SCREEN_SECRET_MENU;
@@ -765,11 +799,13 @@ static Screen screen_secret_list() {
 
     mvprintw(y, 4, "Username: ");
     std::string username = get_input(y++, 14, 64, false);
-    if (username.empty()) return SCREEN_SECRET_MENU;
+    if (username.empty())
+        return SCREEN_SECRET_MENU;
 
     mvprintw(y, 4, "Password: ");
     std::string password = get_input(y++, 14, 256, true);
-    if (password.empty()) return SCREEN_SECRET_MENU;
+    if (password.empty())
+        return SCREEN_SECRET_MENU;
 
     mvprintw(y + 1, 4, "Processing...");
     refresh();
@@ -814,10 +850,8 @@ static Screen screen_secret_list() {
             int end = std::min(offset + max_vis, static_cast<int>(items.size()));
             for (int i = offset; i < end; ++i) {
                 auto& item = items[i];
-                mvprintw(5 + i - offset, 2, "%-30s  %-20s  %-3s  %s",
-                         item.name.c_str(),
-                         item.desc.c_str(),
-                         item.pub_len > 0 ? "yes" : "no",
+                mvprintw(5 + i - offset, 2, "%-30s  %-20s  %-3s  %s", item.name.c_str(),
+                         item.desc.c_str(), item.pub_len > 0 ? "yes" : "no",
                          item.updated_at.c_str());
             }
 
@@ -860,11 +894,13 @@ static Screen screen_kek_rotate() {
 
     mvprintw(y, 4, "Username: ");
     std::string username = get_input(y++, 14, 64, false);
-    if (username.empty()) return SCREEN_MAIN;
+    if (username.empty())
+        return SCREEN_MAIN;
 
     mvprintw(y, 4, "Password: ");
     std::string password = get_input(y++, 14, 256, true);
-    if (password.empty()) return SCREEN_MAIN;
+    if (password.empty())
+        return SCREEN_MAIN;
 
     if (!confirm_dialog("Rotate KEK? This re-encrypts all secrets."))
         return SCREEN_MAIN;
@@ -917,8 +953,7 @@ static Screen screen_cache_stats() {
     draw_title_bar();
 
     ssm_handle* h = nullptr;
-    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
-                              g_db_key_len);
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr, g_db_key_len);
     if (st != SSM_OK) {
         show_notice(ssm_status_to_string(st), true);
         return SCREEN_MAIN;
@@ -940,8 +975,8 @@ static Screen screen_cache_stats() {
         attroff(COLOR_PAIR(CP_ERROR));
     } else {
         double hit_rate = (stats.hit_count + stats.miss_count) > 0
-            ? (100.0 * stats.hit_count) / (stats.hit_count + stats.miss_count)
-            : 0.0;
+                              ? (100.0 * stats.hit_count) / (stats.hit_count + stats.miss_count)
+                              : 0.0;
         mvprintw(y++, 4, "Total slots:   %zu / 256", stats.total_entries);
         mvprintw(y++, 4, "Valid entries: %zu", stats.valid_entries);
         mvprintw(y++, 4, "Hits:          %zu", stats.hit_count);
@@ -971,21 +1006,51 @@ int handle_tui(int /*argc*/, char** /*argv*/) {
     Screen current = SCREEN_MAIN;
     while (current != SCREEN_EXIT) {
         switch (current) {
-            case SCREEN_MAIN:          current = screen_main();           break;
-            case SCREEN_USER_MENU:     current = screen_user_menu();      break;
-            case SCREEN_USER_REGISTER: current = screen_user_register();  break;
-            case SCREEN_USER_AUTH:     current = screen_user_auth();      break;
-            case SCREEN_USER_DELETE:   current = screen_user_delete();    break;
-            case SCREEN_USER_CHANGE_PW:current = screen_user_change_pw(); break;
-            case SCREEN_SECRET_MENU:   current = screen_secret_menu();    break;
-            case SCREEN_SECRET_STORE:  current = screen_secret_store();   break;
-            case SCREEN_SECRET_GET:    current = screen_secret_get();     break;
-            case SCREEN_SECRET_DELETE: current = screen_secret_delete();  break;
-            case SCREEN_SECRET_LIST:   current = screen_secret_list();    break;
-            case SCREEN_KEK_ROTATE:    current = screen_kek_rotate();     break;
-            case SCREEN_DB_INFO:       current = screen_db_info();        break;
-            case SCREEN_CACHE_STATS:   current = screen_cache_stats();    break;
-            default:                   current = SCREEN_EXIT;             break;
+            case SCREEN_MAIN:
+                current = screen_main();
+                break;
+            case SCREEN_USER_MENU:
+                current = screen_user_menu();
+                break;
+            case SCREEN_USER_REGISTER:
+                current = screen_user_register();
+                break;
+            case SCREEN_USER_AUTH:
+                current = screen_user_auth();
+                break;
+            case SCREEN_USER_DELETE:
+                current = screen_user_delete();
+                break;
+            case SCREEN_USER_CHANGE_PW:
+                current = screen_user_change_pw();
+                break;
+            case SCREEN_SECRET_MENU:
+                current = screen_secret_menu();
+                break;
+            case SCREEN_SECRET_STORE:
+                current = screen_secret_store();
+                break;
+            case SCREEN_SECRET_GET:
+                current = screen_secret_get();
+                break;
+            case SCREEN_SECRET_DELETE:
+                current = screen_secret_delete();
+                break;
+            case SCREEN_SECRET_LIST:
+                current = screen_secret_list();
+                break;
+            case SCREEN_KEK_ROTATE:
+                current = screen_kek_rotate();
+                break;
+            case SCREEN_DB_INFO:
+                current = screen_db_info();
+                break;
+            case SCREEN_CACHE_STATS:
+                current = screen_cache_stats();
+                break;
+            default:
+                current = SCREEN_EXIT;
+                break;
         }
     }
 

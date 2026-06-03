@@ -1,6 +1,7 @@
 #include "ssm/ssm.h"
 
 #include <gtest/gtest.h>
+#include <sqlcipher.h>
 
 #include <atomic>
 #include <cstdint>
@@ -10,10 +11,7 @@
 #include <vector>
 
 #include "db/database.h"
-
 #include "utils/secure_memory.h"
-
-#include <sqlcipher.h>
 
 namespace ssm::v1 {
 namespace {
@@ -149,9 +147,8 @@ TEST_F(SsmApiFileTest, DeleteSecretWithExpiredKek) {
     ASSERT_EQ(ssm_user_register(handle_, "iris", "pass1234"), SSM_OK);
 
     const unsigned char priv[] = "expired-kek-test";
-    ASSERT_EQ(
-        ssm_secret_store(handle_, "iris", priv, sizeof(priv), nullptr, 0, "tmp", nullptr),
-        SSM_OK);
+    ASSERT_EQ(ssm_secret_store(handle_, "iris", priv, sizeof(priv), nullptr, 0, "tmp", nullptr),
+              SSM_OK);
 
     ssm_destroy(handle_);
     handle_ = nullptr;
@@ -160,12 +157,11 @@ TEST_F(SsmApiFileTest, DeleteSecretWithExpiredKek) {
     sqlite3* raw_db = nullptr;
     ASSERT_TRUE(db_open(path_, nullptr, 0, &raw_db));
     char* err = nullptr;
-    ASSERT_EQ(
-        sqlite3_exec(raw_db,
-            "UPDATE kek_metadata SET expires_at = '2020-01-01T00:00:00Z' "
-            "WHERE user_id = (SELECT id FROM users WHERE username = 'iris')",
-            nullptr, nullptr, &err),
-        SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(raw_db,
+                           "UPDATE kek_metadata SET expires_at = '2020-01-01T00:00:00Z' "
+                           "WHERE user_id = (SELECT id FROM users WHERE username = 'iris')",
+                           nullptr, nullptr, &err),
+              SQLITE_OK);
     sqlite3_free(err);
     db_close(raw_db);
 
@@ -267,8 +263,8 @@ TEST_F(SsmApiTest, ChangePasswordAndAccessSecrets) {
     ASSERT_EQ(ssm_user_register(handle_, "victor", "oldpass"), SSM_OK);
 
     const unsigned char priv[] = "secret-after-pw-change!";
-    ASSERT_EQ(ssm_secret_store(handle_, "victor", priv, sizeof(priv), nullptr, 0,
-                               "mykey", nullptr), SSM_OK);
+    ASSERT_EQ(ssm_secret_store(handle_, "victor", priv, sizeof(priv), nullptr, 0, "mykey", nullptr),
+              SSM_OK);
 
     EXPECT_EQ(ssm_user_change_password(handle_, "victor", "oldpass", "newpass"), SSM_OK);
 
@@ -310,25 +306,27 @@ struct ListCollector {
     std::vector<size_t> pub_key_lens;
 };
 
-void collect_names(const char* name, const char* desc, const char* updated_at,
-                   size_t pub_key_len, void* user_data) {
+void collect_names(const char* name, const char* desc, const char* updated_at, size_t pub_key_len,
+                   void* user_data) {
     auto* c = static_cast<ListCollector*>(user_data);
     c->names.push_back(name ? name : "");
     c->descriptions.push_back(desc ? desc : "");
     c->pub_key_lens.push_back(pub_key_len);
-    (void)updated_at;
+    (void) updated_at;
 }
-}
+}  // namespace
 
 TEST_F(SsmApiTest, ListSecrets) {
     ASSERT_EQ(ssm_user_register(handle_, "xavier", "pass1234"), SSM_OK);
 
     const unsigned char priv[] = "key-material-here-32bytes!";
     const unsigned char pub[] = "pub-key-here!";
-    ASSERT_EQ(ssm_secret_store(handle_, "xavier", priv, sizeof(priv), pub, sizeof(pub),
-                               "key1", "first key"), SSM_OK);
-    ASSERT_EQ(ssm_secret_store(handle_, "xavier", priv, sizeof(priv), nullptr, 0,
-                               "key2", "second key"), SSM_OK);
+    ASSERT_EQ(ssm_secret_store(handle_, "xavier", priv, sizeof(priv), pub, sizeof(pub), "key1",
+                               "first key"),
+              SSM_OK);
+    ASSERT_EQ(
+        ssm_secret_store(handle_, "xavier", priv, sizeof(priv), nullptr, 0, "key2", "second key"),
+        SSM_OK);
 
     ListCollector c;
     EXPECT_EQ(ssm_secret_list(handle_, "xavier", collect_names, &c), SSM_OK);
@@ -349,8 +347,8 @@ TEST_F(SsmApiTest, ListSecrets) {
 TEST_F(SsmApiTest, ListSecretsWithExpiredKek) {
     ASSERT_EQ(ssm_user_register(handle_, "walter", "pass1234"), SSM_OK);
     const unsigned char priv[] = "some-key";
-    ASSERT_EQ(ssm_secret_store(handle_, "walter", priv, sizeof(priv), nullptr, 0,
-                                "k", nullptr), SSM_OK);
+    ASSERT_EQ(ssm_secret_store(handle_, "walter", priv, sizeof(priv), nullptr, 0, "k", nullptr),
+              SSM_OK);
 
     // destroy and re-open to test with a file DB for expired KEK manipulation
     ssm_destroy(handle_);
@@ -360,17 +358,17 @@ TEST_F(SsmApiTest, ListSecretsWithExpiredKek) {
     ::remove(path);
     ASSERT_EQ(ssm_init(&handle_, path, nullptr, 0), SSM_OK);
     ASSERT_EQ(ssm_user_register(handle_, "walter", "pass1234"), SSM_OK);
-    ASSERT_EQ(ssm_secret_store(handle_, "walter", priv, sizeof(priv), nullptr, 0,
-                               "k", nullptr), SSM_OK);
+    ASSERT_EQ(ssm_secret_store(handle_, "walter", priv, sizeof(priv), nullptr, 0, "k", nullptr),
+              SSM_OK);
     ssm_destroy(handle_);
     handle_ = nullptr;
 
     sqlite3* raw = nullptr;
     ASSERT_TRUE(db_open(path, nullptr, 0, &raw));
     sqlite3_exec(raw,
-        "UPDATE kek_metadata SET expires_at = '2020-01-01T00:00:00Z' "
-        "WHERE user_id = (SELECT id FROM users WHERE username = 'walter')",
-        nullptr, nullptr, nullptr);
+                 "UPDATE kek_metadata SET expires_at = '2020-01-01T00:00:00Z' "
+                 "WHERE user_id = (SELECT id FROM users WHERE username = 'walter')",
+                 nullptr, nullptr, nullptr);
     db_close(raw);
 
     ASSERT_EQ(ssm_init(&handle_, path, nullptr, 0), SSM_OK);
@@ -425,8 +423,9 @@ protected:
         ASSERT_NE(handle_, nullptr);
         ASSERT_EQ(ssm_user_register(handle_, "alice", "strongP@ss1"), SSM_OK);
         const unsigned char priv[] = "sensitive-key-data-0000000000";
-        ASSERT_EQ(ssm_secret_store(handle_, "alice", priv, sizeof(priv), nullptr, 0,
-                                   "mykey", nullptr), SSM_OK);
+        ASSERT_EQ(
+            ssm_secret_store(handle_, "alice", priv, sizeof(priv), nullptr, 0, "mykey", nullptr),
+            SSM_OK);
     }
 
     void TearDown() override {
@@ -441,9 +440,9 @@ TEST_F(SsmApiCorruptionTest, CorruptedTagReturnsIntegrityError) {
     sqlite3* raw = nullptr;
     ASSERT_TRUE(db_open(path_, nullptr, 0, &raw));
     sqlite3_exec(raw,
-        "UPDATE secrets SET tag = X'00000000000000000000000000000000' "
-        "WHERE name = 'mykey'",
-        nullptr, nullptr, nullptr);
+                 "UPDATE secrets SET tag = X'00000000000000000000000000000000' "
+                 "WHERE name = 'mykey'",
+                 nullptr, nullptr, nullptr);
     db_close(raw);
 
     // Re-open
@@ -500,8 +499,8 @@ TEST_F(SsmApiTest, CacheStatsAfterOperations) {
 
     // Store -> cache miss
     const unsigned char priv[] = "my-key-data-here-32bytes!";
-    ASSERT_EQ(ssm_secret_store(handle_, "alice", priv, sizeof(priv), nullptr, 0,
-                               "k", nullptr), SSM_OK);
+    ASSERT_EQ(ssm_secret_store(handle_, "alice", priv, sizeof(priv), nullptr, 0, "k", nullptr),
+              SSM_OK);
 
     ssm_cache_stats after_store{};
     EXPECT_EQ(ssm_cache_get_stats(handle_, &after_store), SSM_OK);
@@ -533,8 +532,8 @@ TEST_F(SsmApiTest, ConcurrentOperations) {
             unsigned char priv[16];
             std::memset(priv, 'A' + i, sizeof(priv));
 
-            if (ssm_secret_store(handle_, "alice", priv, sizeof(priv), nullptr, 0,
-                                 name, nullptr) == SSM_OK)
+            if (ssm_secret_store(handle_, "alice", priv, sizeof(priv), nullptr, 0, name, nullptr) ==
+                SSM_OK)
                 ++ok_count;
         });
     }
@@ -560,8 +559,8 @@ TEST_F(SsmApiTest, ConcurrentPasswordChanges) {
     ASSERT_EQ(ssm_user_register(handle_, "bob", "origpass1"), SSM_OK);
 
     const unsigned char priv[] = "concurrent-access-key!";
-    ASSERT_EQ(ssm_secret_store(handle_, "bob", priv, sizeof(priv), nullptr, 0,
-                               "secret", nullptr), SSM_OK);
+    ASSERT_EQ(ssm_secret_store(handle_, "bob", priv, sizeof(priv), nullptr, 0, "secret", nullptr),
+              SSM_OK);
 
     std::vector<std::thread> threads;
     for (int i = 0; i < 3; ++i) {
@@ -584,14 +583,12 @@ static std::string audit_path() {
     return "/data/data/com.termux/files/usr/tmp/opencode/ssm_audit_test.db";
 }
 
-static int64_t audit_count(const char* path, const char* operation,
-                            const char* result) {
+static int64_t audit_count(const char* path, const char* operation, const char* result) {
     sqlite3* db = nullptr;
     if (!db_open(path, nullptr, 0, &db))
         return -1;
     int64_t cnt = 0;
-    const char* sql =
-        "SELECT count(*) FROM audit_log WHERE operation = ? AND result = ?";
+    const char* sql = "SELECT count(*) FROM audit_log WHERE operation = ? AND result = ?";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, operation, -1, SQLITE_TRANSIENT);
@@ -604,8 +601,8 @@ static int64_t audit_count(const char* path, const char* operation,
     return cnt;
 }
 
-static bool audit_has_details(const char* path, const char* operation,
-                               const char* result, const char* details) {
+static bool audit_has_details(const char* path, const char* operation, const char* result,
+                              const char* details) {
     sqlite3* db = nullptr;
     if (!db_open(path, nullptr, 0, &db))
         return false;
@@ -625,8 +622,8 @@ static bool audit_has_details(const char* path, const char* operation,
     return found;
 }
 
-static bool audit_has_target(const char* path, const char* operation,
-                              const char* result, const char* target) {
+static bool audit_has_target(const char* path, const char* operation, const char* result,
+                             const char* target) {
     sqlite3* db = nullptr;
     if (!db_open(path, nullptr, 0, &db))
         return false;
@@ -677,14 +674,14 @@ TEST_F(AuditLogTest, RegisterDuplicateHasDetails) {
     ASSERT_EQ(ssm_user_register(handle_, "dup", "p@ssw0rd"), SSM_OK);
     ASSERT_EQ(ssm_user_register(handle_, "dup", "p@ssw0rd"), SSM_ERR_AUTH);
     EXPECT_TRUE(audit_has_details(path_, "user_register", "SSM_ERR_AUTH",
-                                    "{\"error\":\"username already exists\"}"));
+                                  "{\"error\":\"username already exists\"}"));
 }
 
 TEST_F(AuditLogTest, AuthUnknownUserHasDetails) {
     int valid = 1;
     ssm_user_authenticate(handle_, "ghost", "x", &valid);
     EXPECT_TRUE(audit_has_details(path_, "user_authenticate", "SSM_ERR_AUTH",
-                                    "{\"error\":\"user not found\"}"));
+                                  "{\"error\":\"user not found\"}"));
 }
 
 TEST_F(AuditLogTest, AuthWrongPasswordHasDetails) {
@@ -692,14 +689,14 @@ TEST_F(AuditLogTest, AuthWrongPasswordHasDetails) {
     int valid = 1;
     ssm_user_authenticate(handle_, "alice", "wrong", &valid);
     EXPECT_TRUE(audit_has_details(path_, "user_authenticate", "SSM_ERR_AUTH",
-                                    "{\"error\":\"password mismatch\"}"));
+                                  "{\"error\":\"password mismatch\"}"));
 }
 
 TEST_F(AuditLogTest, SecretStoreHasTargetAndDetails) {
     ASSERT_EQ(ssm_user_register(handle_, "bob", "p@ss"), SSM_OK);
     const unsigned char priv[] = "test-key-data-here-32bytes!!";
-    ASSERT_EQ(ssm_secret_store(handle_, "bob", priv, sizeof(priv), nullptr, 0,
-                                "mykey", nullptr), SSM_OK);
+    ASSERT_EQ(ssm_secret_store(handle_, "bob", priv, sizeof(priv), nullptr, 0, "mykey", nullptr),
+              SSM_OK);
     EXPECT_EQ(audit_count(path_, "secret_store", "SSM_OK"), 1);
     EXPECT_TRUE(audit_has_target(path_, "secret_store", "SSM_OK", "mykey"));
 }
@@ -707,20 +704,20 @@ TEST_F(AuditLogTest, SecretStoreHasTargetAndDetails) {
 TEST_F(AuditLogTest, SecretGetHasTargetAndDetails) {
     ASSERT_EQ(ssm_user_register(handle_, "carol", "p@ss"), SSM_OK);
     const unsigned char priv[] = "get-test-key-data-here-32byte!";
-    ASSERT_EQ(ssm_secret_store(handle_, "carol", priv, sizeof(priv), nullptr, 0,
-                                "target-key", nullptr), SSM_OK);
+    ASSERT_EQ(
+        ssm_secret_store(handle_, "carol", priv, sizeof(priv), nullptr, 0, "target-key", nullptr),
+        SSM_OK);
     unsigned char out[64] = {};
     size_t len = sizeof(out);
-    ASSERT_EQ(ssm_secret_get(handle_, "carol", "target-key", out, &len,
-                              nullptr, nullptr), SSM_OK);
+    ASSERT_EQ(ssm_secret_get(handle_, "carol", "target-key", out, &len, nullptr, nullptr), SSM_OK);
     EXPECT_TRUE(audit_has_target(path_, "secret_get", "SSM_OK", "target-key"));
 }
 
 TEST_F(AuditLogTest, SecretDeleteHasTargetAndDetails) {
     ASSERT_EQ(ssm_user_register(handle_, "dave", "p@ss"), SSM_OK);
     const unsigned char priv[] = "delete-test-key-data-32bytes!";
-    ASSERT_EQ(ssm_secret_store(handle_, "dave", priv, sizeof(priv), nullptr, 0,
-                                "del-key", nullptr), SSM_OK);
+    ASSERT_EQ(ssm_secret_store(handle_, "dave", priv, sizeof(priv), nullptr, 0, "del-key", nullptr),
+              SSM_OK);
     ASSERT_EQ(ssm_secret_delete(handle_, "dave", "del-key"), SSM_OK);
     EXPECT_TRUE(audit_has_target(path_, "secret_delete", "SSM_OK", "del-key"));
 }
@@ -728,8 +725,8 @@ TEST_F(AuditLogTest, SecretDeleteHasTargetAndDetails) {
 TEST_F(AuditLogTest, ExpiredKekLogsTargetAndDetails) {
     ASSERT_EQ(ssm_user_register(handle_, "eve", "p@ss"), SSM_OK);
     const unsigned char priv[] = "expired-test-data-here-32byte!";
-    ASSERT_EQ(ssm_secret_store(handle_, "eve", priv, sizeof(priv), nullptr, 0,
-                                "exp-key", nullptr), SSM_OK);
+    ASSERT_EQ(ssm_secret_store(handle_, "eve", priv, sizeof(priv), nullptr, 0, "exp-key", nullptr),
+              SSM_OK);
 
     // expire the KEK via second connection
     ssm_destroy(handle_);
@@ -737,21 +734,19 @@ TEST_F(AuditLogTest, ExpiredKekLogsTargetAndDetails) {
     {
         sqlite3* raw = nullptr;
         ASSERT_TRUE(db_open(path_, nullptr, 0, &raw));
-        sqlite3_exec(raw,
-            "UPDATE kek_metadata SET expires_at = '2020-01-01T00:00:00Z'",
-            nullptr, nullptr, nullptr);
+        sqlite3_exec(raw, "UPDATE kek_metadata SET expires_at = '2020-01-01T00:00:00Z'", nullptr,
+                     nullptr, nullptr);
         db_close(raw);
     }
     ASSERT_EQ(ssm_init(&handle_, path_, nullptr, 0), SSM_OK);
     unsigned char buf[64] = {};
     size_t blen = sizeof(buf);
-    ASSERT_EQ(ssm_secret_get(handle_, "eve", "exp-key", buf, &blen,
-                              nullptr, nullptr), SSM_ERR_EXPIRED);
+    ASSERT_EQ(ssm_secret_get(handle_, "eve", "exp-key", buf, &blen, nullptr, nullptr),
+              SSM_ERR_EXPIRED);
 
-    EXPECT_TRUE(audit_has_target(path_, "secret_get", "SSM_ERR_EXPIRED",
-                                  "exp-key"));
-    EXPECT_TRUE(audit_has_details(path_, "secret_get", "SSM_ERR_EXPIRED",
-                                    "{\"error\":\"KEK expired\"}"));
+    EXPECT_TRUE(audit_has_target(path_, "secret_get", "SSM_ERR_EXPIRED", "exp-key"));
+    EXPECT_TRUE(
+        audit_has_details(path_, "secret_get", "SSM_ERR_EXPIRED", "{\"error\":\"KEK expired\"}"));
 }
 
 TEST_F(AuditLogTest, UserDeleteRecordsResult) {
@@ -764,7 +759,7 @@ TEST_F(AuditLogTest, UserDeleteWrongPasswordHasDetails) {
     ASSERT_EQ(ssm_user_register(handle_, "grace", "correct"), SSM_OK);
     ASSERT_EQ(ssm_user_delete(handle_, "grace", "wrong"), SSM_ERR_AUTH);
     EXPECT_TRUE(audit_has_details(path_, "user_delete", "SSM_ERR_AUTH",
-                                    "{\"error\":\"password mismatch\"}"));
+                                  "{\"error\":\"password mismatch\"}"));
 }
 
 TEST_F(AuditLogTest, KekRotateRecordsSuccess) {
@@ -796,12 +791,12 @@ struct query_collector {
     std::vector<std::string> results;
 };
 
-static void query_cb(int64_t id, int64_t /*user_id*/, const char* username,
-                      const char* operation, const char* target,
-                      const char* details, const char* result,
-                      const char* timestamp, void* user_data) {
+static void query_cb(int64_t id, int64_t /*user_id*/, const char* username, const char* operation,
+                     const char* target, const char* details, const char* result,
+                     const char* timestamp, void* user_data) {
     auto* c = static_cast<query_collector*>(user_data);
-    (void)username; (void)timestamp;
+    (void) username;
+    (void) timestamp;
     c->ids.push_back(id);
     c->operations.push_back(operation ? operation : "");
     c->targets.push_back(target ? target : "");
@@ -812,18 +807,21 @@ static void query_cb(int64_t id, int64_t /*user_id*/, const char* username,
 TEST_F(AuditLogTest, QueryAllReturnsEntries) {
     ASSERT_EQ(ssm_user_register(handle_, "query_user", "p@ss"), SSM_OK);
     const unsigned char priv[] = "test-key-data-32bytes!!";
-    ASSERT_EQ(ssm_secret_store(handle_, "query_user", priv, sizeof(priv),
-                                nullptr, 0, "qkey", nullptr), SSM_OK);
+    ASSERT_EQ(
+        ssm_secret_store(handle_, "query_user", priv, sizeof(priv), nullptr, 0, "qkey", nullptr),
+        SSM_OK);
 
     query_collector c;
-    EXPECT_EQ(ssm_audit_log_query(handle_, "query_user", nullptr, nullptr,
-                                   100, 0, query_cb, &c), SSM_OK);
+    EXPECT_EQ(ssm_audit_log_query(handle_, "query_user", nullptr, nullptr, 100, 0, query_cb, &c),
+              SSM_OK);
     EXPECT_GE(c.ids.size(), 2);
     bool found_register = false;
     bool found_store = false;
     for (auto& op : c.operations) {
-        if (op == "user_register") found_register = true;
-        if (op == "secret_store") found_store = true;
+        if (op == "user_register")
+            found_register = true;
+        if (op == "secret_store")
+            found_store = true;
     }
     EXPECT_TRUE(found_register);
     EXPECT_TRUE(found_store);
@@ -834,8 +832,9 @@ TEST_F(AuditLogTest, QueryFilterByOperation) {
     ASSERT_EQ(ssm_kek_rotate(handle_, "filter_user"), SSM_OK);
 
     query_collector c;
-    EXPECT_EQ(ssm_audit_log_query(handle_, "filter_user", "kek_rotate",
-                                   nullptr, 100, 0, query_cb, &c), SSM_OK);
+    EXPECT_EQ(
+        ssm_audit_log_query(handle_, "filter_user", "kek_rotate", nullptr, 100, 0, query_cb, &c),
+        SSM_OK);
     EXPECT_EQ(c.operations.size(), 1);
     EXPECT_EQ(c.operations[0], "kek_rotate");
 }
@@ -847,8 +846,9 @@ TEST_F(AuditLogTest, QueryFilterByResult) {
     ssm_user_authenticate(handle_, "result_user", "wrong", &valid);
 
     query_collector c;
-    EXPECT_EQ(ssm_audit_log_query(handle_, "result_user", nullptr,
-                                   "SSM_ERR_AUTH", 100, 0, query_cb, &c), SSM_OK);
+    EXPECT_EQ(
+        ssm_audit_log_query(handle_, "result_user", nullptr, "SSM_ERR_AUTH", 100, 0, query_cb, &c),
+        SSM_OK);
     EXPECT_GE(c.ids.size(), 1);
     for (auto& res : c.results)
         EXPECT_EQ(res, "SSM_ERR_AUTH");
@@ -858,15 +858,15 @@ TEST_F(AuditLogTest, QueryRespectsLimit) {
     ASSERT_EQ(ssm_user_register(handle_, "limit_user", "p@ss"), SSM_OK);
 
     query_collector c;
-    EXPECT_EQ(ssm_audit_log_query(handle_, "limit_user", nullptr, nullptr,
-                                   0, 0, query_cb, &c), SSM_OK);
+    EXPECT_EQ(ssm_audit_log_query(handle_, "limit_user", nullptr, nullptr, 0, 0, query_cb, &c),
+              SSM_OK);
     EXPECT_LE(c.ids.size(), 1);  // limit 0 → default 100 → but only 1 entry
-    (void)c;
+    (void) c;
 }
 
 TEST_F(AuditLogTest, NullHandleReturnsError) {
-    EXPECT_EQ(ssm_audit_log_query(nullptr, "x", nullptr, nullptr, 10, 0,
-                                   query_cb, nullptr), SSM_ERR_INTERNAL);
+    EXPECT_EQ(ssm_audit_log_query(nullptr, "x", nullptr, nullptr, 10, 0, query_cb, nullptr),
+              SSM_ERR_INTERNAL);
 }
 
 }  // namespace

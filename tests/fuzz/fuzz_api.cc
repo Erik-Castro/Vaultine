@@ -1,9 +1,9 @@
-#include "ssm/ssm.h"
-
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <vector>
+
+#include "ssm/ssm.h"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     if (size < 4)
@@ -30,71 +30,71 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     };
 
     switch (op % 8) {
-    case 0: {
-        auto user = consume_str();
-        auto pass = consume_str();
-        if (!user.empty() && !pass.empty())
-            ssm_user_register(h, user.data(), pass.data());
-        break;
-    }
-    case 1: {
-        auto user = consume_str();
-        auto pass = consume_str();
-        if (!user.empty() && !pass.empty()) {
-            int valid = 0;
-            ssm_user_authenticate(h, user.data(), pass.data(), &valid);
+        case 0: {
+            auto user = consume_str();
+            auto pass = consume_str();
+            if (!user.empty() && !pass.empty())
+                ssm_user_register(h, user.data(), pass.data());
+            break;
         }
-        break;
-    }
-    case 2: {
-        auto user = consume_str();
-        auto pass = consume_str();
-        if (!user.empty() && !pass.empty())
-            ssm_user_delete(h, user.data(), pass.data());
-        break;
-    }
-    case 3: {
-        auto user = consume_str();
-        auto old_pw = consume_str();
-        auto new_pw = consume_str();
-        if (!user.empty() && !old_pw.empty() && !new_pw.empty())
-            ssm_user_change_password(h, user.data(), old_pw.data(), new_pw.data());
-        break;
-    }
-    case 4: {
-        auto user = consume_str();
-        auto name = consume_str();
-        if (!user.empty() && !name.empty()) {
-            size_t key_len = size - pos;
-            if (key_len > 0)
-                ssm_secret_store(h, user.data(), data + pos, key_len, nullptr, 0,
-                                 name.data(), nullptr);
+        case 1: {
+            auto user = consume_str();
+            auto pass = consume_str();
+            if (!user.empty() && !pass.empty()) {
+                int valid = 0;
+                ssm_user_authenticate(h, user.data(), pass.data(), &valid);
+            }
+            break;
         }
-        break;
-    }
-    case 5: {
-        auto user = consume_str();
-        auto name = consume_str();
-        if (!user.empty() && !name.empty()) {
-            unsigned char buf[512];
-            size_t len = sizeof(buf);
-            ssm_secret_get(h, user.data(), name.data(), buf, &len, nullptr, nullptr);
+        case 2: {
+            auto user = consume_str();
+            auto pass = consume_str();
+            if (!user.empty() && !pass.empty())
+                ssm_user_delete(h, user.data(), pass.data());
+            break;
         }
-        break;
-    }
-    case 6: {
-        auto user = consume_str();
-        auto name = consume_str();
-        if (!user.empty() && !name.empty())
-            ssm_secret_delete(h, user.data(), name.data());
-        break;
-    }
-    case 7: {
-        auto user = consume_str();
-        if (!user.empty())
-            ssm_kek_rotate(h, user.data());
-        break;
-    }
+        case 3: {
+            auto user = consume_str();
+            auto old_pw = consume_str();
+            auto new_pw = consume_str();
+            if (!user.empty() && !old_pw.empty() && !new_pw.empty())
+                ssm_user_change_password(h, user.data(), old_pw.data(), new_pw.data());
+            break;
+        }
+        case 4: {
+            auto user = consume_str();
+            auto name = consume_str();
+            if (!user.empty() && !name.empty()) {
+                size_t key_len = size - pos;
+                if (key_len > 0)
+                    ssm_secret_store(h, user.data(), data + pos, key_len, nullptr, 0, name.data(),
+                                     nullptr);
+            }
+            break;
+        }
+        case 5: {
+            auto user = consume_str();
+            auto name = consume_str();
+            if (!user.empty() && !name.empty()) {
+                unsigned char buf[512];
+                size_t len = sizeof(buf);
+                ssm_secret_get(h, user.data(), name.data(), buf, &len, nullptr, nullptr);
+            }
+            break;
+        }
+        case 6: {
+            auto user = consume_str();
+            auto name = consume_str();
+            if (!user.empty() && !name.empty())
+                ssm_secret_delete(h, user.data(), name.data());
+            break;
+        }
+        case 7: {
+            auto user = consume_str();
+            if (!user.empty())
+                ssm_kek_rotate(h, user.data());
+            break;
+        }
     }
 
     ssm_destroy(h);

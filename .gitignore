@@ -1,4 +1,4 @@
-build/
+build*/
 *.db
 *.db-wal
 *.db-shm
