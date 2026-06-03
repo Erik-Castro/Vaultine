@@ -54,8 +54,7 @@ jobs:
         run: |
           cmake -B build-fuzz \
             -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 \
-            -DSSM_FUZZING=ON -DCMAKE_BUILD_TYPE=Debug \
-            -DSSM_BUILD_TESTS=OFF
+            -DSSM_FUZZING=ON -DCMAKE_BUILD_TYPE=Debug
           cmake --build build-fuzz --target fuzz_api
       - name: Quick fuzz (10s, seed corpus)
         run: |
@@ -75,7 +74,7 @@ jobs:
       - name: Build benchmarks
         run: |
           cmake -B build-bench -DSSM_BUILD_BENCHMARKS=ON \
-            -DSSM_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release
           cmake --build build-bench --target ssm_bench
       - name: Run benchmarks
         run: |

@@ -1,9 +1,10 @@
+#include "backup/backup.h"
+
 #include <gtest/gtest.h>
 
 #include <cstdio>
 #include <cstring>
 
-#include "backup/backup.h"
 #include "ssm/ssm.h"
 
 namespace ssm::v1 {
@@ -13,10 +14,8 @@ const char* TEST_DB_PATH = ".ssm_backup_test.db";
 const char* BACKUP_PATH = ".ssm_backup_test.bkp";
 const char* RESTORE_PATH = ".ssm_backup_test_restored.db";
 const unsigned char TEST_KEY[32] = {
-    0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
-    0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,
-    0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,
-    0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f,
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
 };
 
 class BackupTest : public ::testing::Test {
@@ -32,8 +31,9 @@ protected:
         ASSERT_EQ(ssm_user_register(h, "alice", "test1234"), SSM_OK);
 
         unsigned char key[4] = {0xde, 0xad, 0xbe, 0xef};
-        ASSERT_EQ(ssm_secret_store(h, "alice", key, sizeof(key), nullptr, 0,
-                                   "my-key", "test secret"), SSM_OK);
+        ASSERT_EQ(
+            ssm_secret_store(h, "alice", key, sizeof(key), nullptr, 0, "my-key", "test secret"),
+            SSM_OK);
         ssm_destroy(h);
     }
 
@@ -59,7 +59,8 @@ TEST_F(BackupTest, CreateBackupSuccess) {
     long file_size = std::ftell(f);
     std::fclose(f);
 
-    EXPECT_GT(file_size, static_cast<long>(sizeof(backup_header) + BACKUP_TAG_LEN + BACKUP_HMAC_LEN));
+    EXPECT_GT(file_size,
+              static_cast<long>(sizeof(backup_header) + BACKUP_TAG_LEN + BACKUP_HMAC_LEN));
 }
 
 TEST_F(BackupTest, CreateAndRestore) {
@@ -185,8 +186,7 @@ TEST_F(BackupTest, SsmApiBadKeyFails) {
 
     h = nullptr;
     ASSERT_EQ(ssm_init(&h, TEST_DB_PATH, nullptr, 0), SSM_OK);
-    EXPECT_EQ(ssm_backup_restore(h, BACKUP_PATH, wrong_key, sizeof(wrong_key)),
-              SSM_ERR_INTERNAL);
+    EXPECT_EQ(ssm_backup_restore(h, BACKUP_PATH, wrong_key, sizeof(wrong_key)), SSM_ERR_INTERNAL);
     ssm_destroy(h);
 }
 
@@ -203,8 +203,8 @@ TEST_F(BackupTest, WALCheckpointBeforeBackup) {
     ASSERT_EQ(ssm_init(&h, TEST_DB_PATH, nullptr, 0), SSM_OK);
 
     unsigned char key[4] = {0x01, 0x02, 0x03, 0x04};
-    ASSERT_EQ(ssm_secret_store(h, "alice", key, sizeof(key), nullptr, 0,
-                               "wal-key", "after WAL"), SSM_OK);
+    ASSERT_EQ(ssm_secret_store(h, "alice", key, sizeof(key), nullptr, 0, "wal-key", "after WAL"),
+              SSM_OK);
 
     ASSERT_EQ(ssm_backup_create(h, BACKUP_PATH, TEST_KEY, sizeof(TEST_KEY)), SSM_OK);
     ssm_destroy(h);

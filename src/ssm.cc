@@ -164,13 +164,15 @@ ssm_status ssm_init(ssm_handle** out, const char* db_path, const unsigned char* 
     }
     auto* h = ::new (mem) ssm_handle{db};
 
-    h->db_path = strdup(db_path ? db_path : "");
+    size_t path_len = std::strlen(db_path ? db_path : "");
+    h->db_path = static_cast<char*>(std::malloc(path_len + 1));
     if (!h->db_path) {
         h->~ssm_handle();
         secure_free(h, sizeof(ssm_handle));
         db_close(db);
         return SSM_ERR_INTERNAL;
     }
+    std::memcpy(h->db_path, db_path ? db_path : "", path_len + 1);
 
     *out = h;
     return SSM_OK;
@@ -188,7 +190,7 @@ ssm_status ssm_destroy(ssm_handle* h) {
         }
         db_close(h->db);
     }
-    free(h->db_path);
+    std::free(h->db_path);
     h->~ssm_handle();
     secure_free(h, sizeof(ssm_handle));
     return SSM_OK;
@@ -689,8 +691,7 @@ ssm_status ssm_backup_create(ssm_handle* h, const char* backup_path,
     std::shared_lock lock(h->mutex);
     sqlite3_wal_checkpoint_v2(h->db, nullptr, SQLITE_CHECKPOINT_FULL, nullptr, nullptr);
 
-    if (!h->db_path || h->db_path[0] == '\0' ||
-        std::strcmp(h->db_path, ":memory:") == 0)
+    if (!h->db_path || h->db_path[0] == '\0' || std::strcmp(h->db_path, ":memory:") == 0)
         return SSM_ERR_INTERNAL;
 
     if (!backup_create(h->db_path, backup_path, backup_key, backup_key_len))
@@ -706,8 +707,7 @@ ssm_status ssm_backup_restore(ssm_handle* h, const char* backup_path,
 
     std::unique_lock lock(h->mutex);
 
-    if (!h->db_path || h->db_path[0] == '\0' ||
-        std::strcmp(h->db_path, ":memory:") == 0)
+    if (!h->db_path || h->db_path[0] == '\0' || std::strcmp(h->db_path, ":memory:") == 0)
         return SSM_ERR_INTERNAL;
 
     // Read backup into temporary file first

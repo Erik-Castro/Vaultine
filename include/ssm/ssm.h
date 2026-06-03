@@ -77,9 +77,9 @@ typedef void (*ssm_audit_log_cb)(int64_t id, int64_t user_id, const char* userna
                                  void* user_data);
 
 SSM_EXPORT ssm_status ssm_audit_log_query(ssm_handle* h, const char* username,
-                                           const char* operation, const char* result, int64_t limit,
-                                           int64_t offset, ssm_audit_log_cb callback,
-                                           void* user_data);
+                                          const char* operation, const char* result, int64_t limit,
+                                          int64_t offset, ssm_audit_log_cb callback,
+                                          void* user_data);
 
 SSM_EXPORT ssm_status ssm_backup_create(ssm_handle* h, const char* backup_path,
                                         const unsigned char* backup_key, size_t backup_key_len);

@@ -22,13 +22,12 @@ struct backup_header {
 };
 #pragma pack(pop)
 
-static_assert(sizeof(backup_header) == BACKUP_HEADER_LEN,
-              "backup_header must be 32 bytes");
+static_assert(sizeof(backup_header) == BACKUP_HEADER_LEN, "backup_header must be 32 bytes");
 
-bool backup_create(const char* src_path, const char* dst_path,
-                   const unsigned char* key, size_t key_len);
+bool backup_create(const char* src_path, const char* dst_path, const unsigned char* key,
+                   size_t key_len);
 
-bool backup_restore(const char* src_path, const char* dst_path,
-                    const unsigned char* key, size_t key_len);
+bool backup_restore(const char* src_path, const char* dst_path, const unsigned char* key,
+                    size_t key_len);
 
 }  // namespace ssm::v1

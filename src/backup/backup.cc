@@ -12,7 +12,7 @@
 namespace ssm::v1 {
 namespace {
 
-const char EXPECTED_MAGIC[BACKUP_MAGIC_LEN] = {'V','A','U','L','T','B','K','P'};
+const char EXPECTED_MAGIC[BACKUP_MAGIC_LEN] = {'V', 'A', 'U', 'L', 'T', 'B', 'K', 'P'};
 
 bool read_file(const char* path, unsigned char** data_out, size_t* len_out) {
     FILE* f = std::fopen(path, "rb");
@@ -53,8 +53,8 @@ bool write_file(const char* path, const unsigned char* data, size_t len) {
 
 }  // namespace
 
-bool backup_create(const char* src_path, const char* dst_path,
-                   const unsigned char* key, size_t key_len) {
+bool backup_create(const char* src_path, const char* dst_path, const unsigned char* key,
+                   size_t key_len) {
     if (!src_path || !dst_path || !key || key_len != 32)
         return false;
 
@@ -76,10 +76,9 @@ bool backup_create(const char* src_path, const char* dst_path,
         auto* ciphertext = new unsigned char[ciphertext_len];
         unsigned char tag[BACKUP_TAG_LEN];
 
-        bool enc_ok = aes_gcm_encrypt(
-            db_data, db_len, key, key_len, header.nonce, BACKUP_NONCE_LEN,
-            reinterpret_cast<const unsigned char*>(&header), sizeof(header),
-            ciphertext, tag, BACKUP_TAG_LEN);
+        bool enc_ok = aes_gcm_encrypt(db_data, db_len, key, key_len, header.nonce, BACKUP_NONCE_LEN,
+                                      reinterpret_cast<const unsigned char*>(&header),
+                                      sizeof(header), ciphertext, tag, BACKUP_TAG_LEN);
 
         if (!enc_ok) {
             delete[] ciphertext;
@@ -117,8 +116,8 @@ bool backup_create(const char* src_path, const char* dst_path,
     return ok;
 }
 
-bool backup_restore(const char* src_path, const char* dst_path,
-                    const unsigned char* key, size_t key_len) {
+bool backup_restore(const char* src_path, const char* dst_path, const unsigned char* key,
+                    size_t key_len) {
     if (!src_path || !dst_path || !key || key_len != 32)
         return false;
 
@@ -166,10 +165,10 @@ bool backup_restore(const char* src_path, const char* dst_path,
 
         // Decrypt
         auto* plaintext = new unsigned char[ciphertext_len];
-        bool dec_ok = aes_gcm_decrypt(
-            ciphertext, ciphertext_len, key, key_len, header.nonce, BACKUP_NONCE_LEN,
-            reinterpret_cast<const unsigned char*>(&header), sizeof(header),
-            tag, BACKUP_TAG_LEN, plaintext);
+        bool dec_ok =
+            aes_gcm_decrypt(ciphertext, ciphertext_len, key, key_len, header.nonce,
+                            BACKUP_NONCE_LEN, reinterpret_cast<const unsigned char*>(&header),
+                            sizeof(header), tag, BACKUP_TAG_LEN, plaintext);
 
         if (!dec_ok) {
             delete[] plaintext;
