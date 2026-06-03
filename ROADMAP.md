@@ -901,9 +901,9 @@ set(SSM_USE_OPENSSL_FIPS ON)  # Link com openssl-provider-fips
 
 **Bindings Sugeridos**:
 - ✅ Python (ctypes) — v0.2
-- 🔜 Rust (bindgen)
-- 🔜 Go (cgo)
-- 🔜 Node.js (NAPI)
+- ✅ Rust (bindgen) — v0.3
+- ✅ Go (cgo) — v0.3
+- ✅ Node.js (NAPI) — v0.3
 - 🔜 Java (JNI)
 
 **Exemplo Rust**:
@@ -1020,7 +1020,7 @@ Alto    │                   │              │  1.1.4       │
 
 ### v1.0.0 GA
 - [ ] **Audit**: Third-party security review
-- [ ] **Bindings**: Rust, Go, Node.js
+- [x] **Bindings**: Rust, Go, Node.js
 - [ ] **Visibility**: Conferences, blog, case studies
 
 ---

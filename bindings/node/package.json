@@ -1,0 +1,24 @@
+{
+  "name": "vaultine",
+  "version": "0.3.0",
+  "description": "Node.js bindings for Vaultine — cryptographic multi-tenant secrets management",
+  "main": "lib/index.js",
+  "scripts": {
+    "install": "node-gyp rebuild",
+    "build": "node-gyp rebuild",
+    "test": "node test/test.js",
+    "example": "node examples/basic.js"
+  },
+  "gypfile": true,
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Erik-Castro/Vaultine.git"
+  },
+  "keywords": ["vaultine", "secrets", "crypto", "key-management", "multi-tenant"],
+  "license": "MIT"
+}
