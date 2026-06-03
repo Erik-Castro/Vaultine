@@ -5,13 +5,13 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.2.0--beta-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.0--beta-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=c%2B%2B" alt="C++17">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/platform-linux%20%7C%20macOS-lightgrey?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="Build">
-  <img src="https://img.shields.io/badge/tests-139%20passing-brightgreen?style=flat-square" alt="Tests">
-  <img src="https://img.shields.io/badge/coverage-80%25-yellow?style=flat-square" alt="Coverage">
+  <img src="https://img.shields.io/badge/tests-182%20passing-brightgreen?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/coverage-82%25-yellow?style=flat-square" alt="Coverage">
   <img src="https://img.shields.io/badge/security-audit%20pending-orange?style=flat-square" alt="Security">
 </p>
 
@@ -65,6 +65,12 @@ Usuário deleta conta → verifica senha → CASCADE (KEK + segredos removidos)
 Usuário troca senha → re-hash → re-wrap KEK (mesmo salt) → COMMIT atômico
        │
 KEK expira (90d) → rotação: decrypt tudo com KEK velho → encrypt com KEK novo → COMMIT
+       │
+Backup → AES-256-GCM + HMAC-SHA256 → arquivo .bak portável
+       │
+Export → JSON/CSV metadata (PII redactable) → streaming via callback
+       │
+Schema Migration → PRAGMA user_version → migrações sequenciais atômicas
 ```
 
 ## Stack
@@ -103,10 +109,28 @@ ctest --test-dir build --output-on-failure
 ### Release Build
 
 ```bash
-cmake -B build-release -DSSM_VISIBILITY_HIDDEN=ON -DCMAKE_BUILD_TYPE=Release
+cmake -B build-release -DCMAKE_BUILD_TYPE=Release
 cmake --build build-release
-# Apenas 11 símbolos visíveis no .so (init, destroy, register, authenticate,
-#   store, get, delete, list, user_delete, change_password, kek_rotate)
+# Visibility hidden automático em Release (SSM_VISIBILITY_HIDDEN=ON)
+```
+
+### Testes e Qualidade
+
+```bash
+# Testes completos (182)
+ctest --test-dir build --output-on-failure
+
+# Sanitizers (ASan+UBSan)
+cmake -B build-san -DSSM_SANITIZE=ON && cmake --build build-san
+./build-san/tests/ssm_test
+
+# Fuzzing (clang)
+cmake -B build-fuzz -DCMAKE_C_COMPILER=clang -DSSM_FUZZING=ON && cmake --build build-fuzz
+./build-fuzz/tests/fuzz_api -max_total_time=10 -runs=100000
+
+# Benchmarks
+cmake -B build-bench -DSSM_BUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release && cmake --build build-bench
+./build-bench/tests/ssm_bench --benchmark_min_time=0.1
 ```
 
 ### Instalação
@@ -115,7 +139,7 @@ cmake --build build-release
 cmake -B build
 cmake --build build
 cmake --install build --prefix /usr/local
-# Produz: lib/libssm.so.0.1.0, include/ssm/ssm.h, lib/cmake/ssm/ssmConfig.cmake
+# Produz: lib/libssm.so.0.3.0, include/ssm/ssm.h, lib/cmake/ssm/ssmConfig.cmake
 ```
 
 Consumir via CMake:
@@ -197,9 +221,32 @@ O Vaultine inclui uma interface ncurses interativa via `ssm-cli tui`:
 
 **Telas:** Register, Authenticate, Delete, Change Password, Secret Store/Get/Delete/List (scrollável), KEK Rotation, Database Info, Cache Statistics.
 
+## CLI Completo
+
+```bash
+ssm-cli --help
+```
+
+| Comando | Descrição |
+|---------|-----------|
+| `user register/auth/delete/change-password` | Gerenciamento de usuários |
+| `secret store/get/delete/list` | Gerenciamento de segredos |
+| `kek rotate` | Rotação manual de KEK |
+| `db version` | Mostra versão do schema SQLite |
+| `db migrate` | Aplica migrações pendentes |
+| `backup create/restore <file>` | Backup/restore criptografado |
+| `export [--format json\|csv] [--redact-pii]` | Exporta metadados para stdout |
+| `cache-stats` | Estatísticas do cache de wrapping keys |
+| `audit-log <username>` | Consulta log de auditoria |
+| `env exec <username> <cmd>` | Injeta segredos como env vars |
+| `tui` | Interface ncurses interativa |
+
 ```bash
 ssm-cli tui                     # inicia a interface
 ssm-cli --db /path/db tui       # com banco personalizado
+ssm-cli backup create vaultine.bak --backup-key <hex64>
+ssm-cli export --format json --redact-pii
+ssm-cli db version
 ```
 
 ## API Pública
@@ -312,6 +359,51 @@ ssm_status ssm_kek_rotate(ssm_handle* h, const char* username);
 ```
 
 Gera novo KEK, descriptografa todos os segredos com KEK antigo em memória, re-criptografa com KEK novo. Tudo dentro de uma **transação ACID única** — se qualquer passo falhar, ROLLBACK total.
+
+### ssm_backup_create / ssm_backup_restore
+
+```c
+ssm_status ssm_backup_create(ssm_handle* h, const char* backup_path,
+                             const unsigned char* backup_key, size_t backup_key_len);
+
+ssm_status ssm_backup_restore(ssm_handle* h, const char* backup_path,
+                              const unsigned char* backup_key, size_t backup_key_len);
+```
+
+Backup do banco completo com AES-256-GCM + HMAC-SHA256:
+- `backup_key`: 32 bytes de chave (hex 64 chars no CLI)
+- Formato portável entre máquinas
+- Restore valida HMAC + tag GCM antes de substituir o DB
+
+### ssm_export
+
+```c
+typedef enum {
+    SSM_EXPORT_JSON = 0,
+    SSM_EXPORT_CSV = 1
+} ssm_export_format;
+
+typedef void (*ssm_export_cb)(const char* chunk, size_t len, void* user_data);
+
+ssm_status ssm_export(ssm_handle* h, ssm_export_format format, int redact_pii,
+                      ssm_export_cb callback, void* user_data);
+```
+
+Exporta metadados (NÃO segredos) via streaming callback:
+- JSON ou CSV
+- `redact_pii=1` substitui usernames por IDs anônimos
+- Inclui: usuários, segredos (nomes/tamanhos), metadados KEK
+
+### ssm_db_version / ssm_db_migrate
+
+```c
+ssm_status ssm_db_version(ssm_handle* h, int* version_out);
+ssm_status ssm_db_migrate(ssm_handle* h);
+```
+
+- `ssm_db_version`: lê `PRAGMA user_version` do SQLite
+- `ssm_db_migrate`: aplica migrações pendentes automaticamente
+- Schema v1: schema inicial (4 tabelas). Schema v2: + índice `idx_secrets_user_id`
 
 ## Exemplos
 
@@ -474,6 +566,60 @@ int main(void) {
     printf("Segredos de eve:\n");
     ssm_secret_list(h, "eve", list_cb, &count);
     printf("Total: %d\n", count);
+
+    ssm_destroy(h);
+    return 0;
+}
+```
+
+### Backup e Restore
+
+```c
+#include <ssm/ssm.h>
+#include <stdio.h>
+
+int main(void) {
+    ssm_handle* h = NULL;
+    ssm_init(&h, "vaultine.db", NULL, 0);
+    ssm_user_register(h, "alice", "p@ss");
+
+    // backup key de 32 bytes
+    unsigned char key[32] = "meu-backup-key-32bytes-aqui!";
+    if (ssm_backup_create(h, "vaultine.bak", key, sizeof(key)) == SSM_OK)
+        printf("backup criado\n");
+
+    ssm_destroy(h);
+
+    // restore em outro handle
+    ssm_handle* h2 = NULL;
+    ssm_init(&h2, "vaultine-restored.db", NULL, 0);
+    ssm_backup_restore(h2, "vaultine.bak", key, sizeof(key));
+
+    int valido = 0;
+    ssm_user_authenticate(h2, "alice", "p@ss", &valido);
+    printf("alice acessível após restore: %s\n", valido ? "sim" : "não");
+    ssm_destroy(h2);
+    return 0;
+}
+```
+
+### Exportar Metadados
+
+```c
+void export_cb(const char* chunk, size_t len, void* user) {
+    fwrite(chunk, 1, len, (FILE*)user);
+}
+
+int main(void) {
+    ssm_handle* h = NULL;
+    ssm_init(&h, ":memory:", NULL, 0);
+    ssm_user_register(h, "bob", "pass");
+
+    // JSON para stdout (PII preservado)
+    ssm_export(h, SSM_EXPORT_JSON, 0, export_cb, stdout);
+
+    // CSV para stdout (PII redactado)
+    // ssm_export(h, SSM_EXPORT_CSV, 1, export_cb, stdout);
 
     ssm_destroy(h);
     return 0;

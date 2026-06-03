@@ -7,6 +7,58 @@ e este projeto segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.0-beta] — 2026-06-03
+
+### 🎉 Adicionado
+
+#### 🔒 Segurança
+- ✅ **Backup/Restore**: AES-256-GCM + HMAC-SHA256 backup format, 12 testes
+- ✅ **Schema Migration**: `PRAGMA user_version` tracking, migration v1→v2, rollback capability, 9 testes
+- ✅ **Database Export (JSON/CSV)**: metadata export streaming via callback, PII redaction, 11 testes
+- ✅ **Error Message Clarity**: `ssm_status_to_string` para todos os 6 status; null-handle checks em 9 APIs
+- ✅ **User Enumeration Fix**: `ssm_user_register` retorna `SSM_OK` para username duplicado
+
+#### 🧪 Qualidade & CI/CD
+- ✅ **182 testes passando** (era 139 no rc1)
+- ✅ **Memory Leak Detection**: `cmake/Sanitizer.cmake` com `-DSSM_SANITIZE=ON` (ASan+UBSan)
+- ✅ **Valgrind Suppressions**: expandido para OpenSSL, SQLCipher, ncurses, libstdc++
+- ✅ **Fuzzing Targets**: `fuzz_api`, `fuzz_cli` (hex decode), `fuzz_password` (user lifecycle)
+- ✅ **Benchmark Suite**: 10 benchmarks (BM_KekRotate, BM_SecretList, BM_ChangePassword, BM_ConcurrentReads)
+- ✅ **Benchmark Delta Tool**: `tools/bench_compare.py` para comparação JSON
+
+#### 📚 Documentação
+- ✅ **PR/Issue Templates**: SDD checklist, security contact config
+- ✅ **ROADMAP sync**: itens 1.1.4, 1.2.1, 1.2.3, 1.3.2, 2.1.2, 2.2.1, 2.2.2 marcados como concluídos
+
+### 🔧 Alterado
+
+- ⚠️ `ssm_user_register` agora não diferencia "usuário já existe" de "registrado" (anti-enumeration)
+- ⚠️ `cli/hex_utils.h` extraído de `ssm_cli.cc` para `hex_decode`/`hex_val` compartilhados
+- ⚠️ `tests/valgrind.supp` expandido com supressões de terceiros
+- ⚠️ Schemas SQLite agora versionados via `PRAGMA user_version`
+
+### 🐛 Corrigido
+
+- `strdup` → `malloc` + `memcpy` para compatibilidade POSIX
+- CI job sem `-DSSM_BUILD_TESTS=OFF` nos targets bench/fuzz
+
+### ⚠️ Deprecado
+
+- ❌ Nenhum
+
+### 🗑️ Removido
+
+- ❌ Nenhum
+
+### ✋ Conhecidos
+
+- ⏳ TPM integration (2.1.1) — postergado
+- ⏳ Package Managers (2.3.1) — postergado
+- ⏳ Docker Image (2.3.2) — postergado
+- 🟡 Rotação de KEK é O(n) — para usuários com 10k+ segredos pode levar 2s+
+
+---
+
 ## [0.2.0-rc1] — 2026-06-01
 
 ### 🎉 Adicionado

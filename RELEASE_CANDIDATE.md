@@ -1,8 +1,8 @@
-# 🚀 Vaultine v0.2.0-rc1 Release Candidate
+# 🚀 Vaultine v0.3.0-beta
 
-**Data**: 2026-06-01  
-**Status**: 🟡 **BETA TESTING**  
-**Target**: v0.2.0 Stable em 2026-06-15  
+**Data**: 2026-06-03  
+**Status**: 🟢 **STABLE BETA**  
+**Target**: v0.3.0 RC em 2026-Q3  
 
 ---
 
@@ -12,27 +12,33 @@
 
 - [x] Code review (manual)
 - [x] Security audit (internal)
-- [x] 80%+ test coverage
+- [x] 82%+ test coverage (182 testes)
 - [x] CI/CD green (GitHub Actions)
 - [x] Memory leak checks (valgrind)
+- [x] Fuzzing targets (API, CLI, password)
+- [x] Benchmark suite (10 benchmarks)
 - [x] Documentation updated
-- [x] CHANGELOG.md criado
-- [x] Roadmap publicado
+- [x] CHANGELOG.md atualizado
+- [x] ROADMAP atualizado
+- [x] Backup/Restore (AES-256-GCM + HMAC)
+- [x] Schema Migration (version tracking + rollback)
+- [x] Database Export (JSON/CSV, PII redaction)
 
-### ⏳ Durante RC (Em Progresso)
+### ⏳ Pós-Release
 
 - [ ] Community feedback (GitHub Discussions)
 - [ ] Real-world testing scenarios
-- [ ] Performance benchmarking
 - [ ] Edge case discovery
-- [ ] Documentation review
+- [ ] TPM integration (postergado)
+- [ ] Package Managers (postergado)
+- [ ] Docker Image (postergado)
 
-### 📌 Bloqueadores para v0.2.0 Stable
+### 📌 Bloqueadores para v1.0.0
 
-- [ ] 0 testes falhando
-- [ ] 0 bloqueadores de segurança encontrados
-- [ ] 80%+ test coverage mantido
-- [ ] Fuzzing com libFuzzer (recomendado)
+- [x] 0 testes falhando (182/182 ✅)
+- [ ] External security audit
+- [ ] 85%+ test coverage
+- [ ] FIPS 140-2/3 certified cryptography (optional)
 
 ---
 

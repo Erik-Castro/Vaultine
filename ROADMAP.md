@@ -256,8 +256,8 @@ CREATE TABLE audit_log (
 
 ❌ FALTANDO (IMPORTANTE):
   - [x] Memory leak detection (valgrind/asan) — CMake suporta, configurar CI
-  - [ ] Performance regression (benchmark suite)
-  - [ ] Schema migration
+  - [x] Performance regression (benchmark suite)
+  - [x] Schema migration
   - [x] Backup/restore integrity
   - [x] Error message clarity
 ```
@@ -414,9 +414,9 @@ clang++ -fsanitize=fuzzer,address tests/fuzz_cli.cc -o fuzz_cli
 ```
 
 **Tarefas**:
-- [ ] Criar `tests/fuzz_*.cc`
+- [x] Criar `tests/fuzz_*.cc`
 - [ ] CI integration (OSS-Fuzz)
-- [ ] Seed corpus
+- [x] Seed corpus
 
 ---
 
@@ -496,8 +496,8 @@ BENCHMARK_MAIN();
 ```
 
 **Tarefas**:
-- [ ] Integrar Google Benchmark
-- [ ] Rodas em CI (não falha, apenas log)
+- [x] Integrar Google Benchmark
+- [x] Rodar em CI (não falha, apenas log)
 - [ ] Track histórico (graph em README)
 
 ---
@@ -747,10 +747,10 @@ static const migration migrations[] = {
 ```
 
 **Tarefas**:
-- [ ] Versioning schema (schema_version em user_data)
-- [ ] Migration registry
-- [ ] Rollback capability
-- [ ] Tests (forward/backward)
+- [x] Versioning schema (schema_version via PRAGMA user_version)
+- [x] Migration registry
+- [x] Rollback capability
+- [x] Tests (forward/backward)
 
 ---
 
@@ -769,10 +769,10 @@ ssm-cli export --format json --output report.json
 ```
 
 **Tarefas**:
-- [ ] JSON exporter
-- [ ] CSV exporter
-- [ ] PII redaction
-- [ ] Tests
+- [x] JSON exporter
+- [x] CSV exporter
+- [x] PII redaction
+- [x] Tests
 
 ---
 
@@ -1082,25 +1082,31 @@ Para projeto de 1 pessoa (você): Priorize **1.1 + 1.2** primeiro (segurança + 
 
 **Template de Issue**:
 ```markdown
-## v0.2.0 Milestone
+## v0.3.0 Milestone
 
-### 1.1 Security
-- [ ] #<issue_id>: mlock implementation
-- [ ] #<issue_id>: Password validation
-- [ ] #<issue_id>: Audit log enhancement
+### 2.1 Security
+- [x] Backup/Restore (AES-256-GCM + HMAC)
+- [x] Error message clarity
+- [x] User enumeration fix
+- [ ] TPM integration (postergado)
 
-### 1.2 Testing & CI/CD
-- [ ] #<issue_id>: Expand test suite
-- [ ] #<issue_id>: GitHub Actions setup
-- [ ] #<issue_id>: Fuzzing integration
+### 2.2 Features
+- [x] Schema Migration (version tracking + rollback)
+- [x] Database Export (JSON/CSV, PII redaction)
+
+### 2.3 Distribution
+- [ ] Package Managers (apt, brew, conan — postergado)
+- [ ] Docker Image (postergado)
+
+### 1.2 Testing & CI/CD (v0.2.0)
+- [x] Expand test suite (139→182 testes)
+- [x] GitHub Actions setup
+- [x] Fuzzing integration (3 targets)
+- [x] Memory leak detection (Sanitizer.cmake)
 
 ### 1.3 Performance
-- [ ] #<issue_id>: Cache statistics
-- [ ] #<issue_id>: Benchmark suite
-
-### 1.4 Documentation
-- [ ] #<issue_id>: SECURITY.md
-- [ ] #<issue_id>: CONTRIBUTING.md
+- [x] Cache statistics
+- [x] Benchmark suite (10 benchmarks + delta tool)
 ```
 
 ---

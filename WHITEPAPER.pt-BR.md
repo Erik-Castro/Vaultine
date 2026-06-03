@@ -4,7 +4,7 @@
 
 | Versão | Data | Autor |
 |---------|------|--------|
-| 1.1 | 2026-06 | Vaultine Engineering |
+| 1.2 | 2026-06 | Vaultine Engineering |
 
 ---
 
@@ -372,7 +372,7 @@ Medições de performance aproximadas em um sistema Linux x86_64 moderno (Intel 
 
 ## 10. Implementado vs Trabalho Futuro
 
-As seguintes características do documento de design original foram implementadas desde v1.0:
+As seguintes funcionalidades foram implementadas desde v1.1:
 
 | Funcionalidade | Seção | Status |
 |----------------|-------|--------|
@@ -386,6 +386,13 @@ As seguintes características do documento de design original foram implementada
 | Regras de instalação CMake + config package | `src/CMakeLists.txt` + `cmake/ssmConfig.cmake.in` | ✅ Implementado |
 | CLI (`ssm-cli`) com todas as operações | `cli/ssm_cli.cc` — dispatch de user/secret/kek/env | ✅ Implementado |
 | TUI ncurses (`ssm-cli tui`) | `cli/ssm_tui.cc` — interface interativa com menus, formulários, listas | ✅ Implementado |
+| **Backup/Restore** (AES-256-GCM + HMAC) | `src/backup/backup.cc` — formato .bak | ✅ v1.2 |
+| **Export Database** (JSON/CSV) | `src/export/export.cc` — streaming de metadados, redação de PII | ✅ v1.2 |
+| **Schema Migration** | `src/db/migrations.cc` — versionamento via PRAGMA, rollback | ✅ v1.2 |
+| **Fuzzing** (3 targets) | `tests/fuzz/` — API, CLI, ciclo de vida de senha | ✅ v1.2 |
+| **Benchmark Suite** (10 benchmarks) | `tests/bench_ssm.cc` + `tools/bench_compare.py` | ✅ v1.2 |
+| **Sanitizadores** (ASan+UBSan) | `cmake/Sanitizer.cmake` — `-DSSM_SANITIZE=ON` | ✅ v1.2 |
+| **CLI: backup, export, db** | `cli/ssm_cli.cc` — novos subcomandos com help | ✅ v1.2 |
 
 ### 10.1 CLI (Interface de Linha de Comando)
 
@@ -393,6 +400,11 @@ O Vaultine inclui um cliente CLI (`ssm-cli`) que expõe todas as operações da 
 - **user**: register, auth, delete, change-password
 - **secret**: store (com arquivos de chave), get, delete, list
 - **kek**: rotate
+- **db**: version, migrate
+- **backup**: create, restore
+- **export**: [--format json|csv] [--redact-pii]
+- **cache-stats**: estatísticas do cache de wrapping keys
+- **audit-log**: consulta de log de auditoria
 - **env**: exec (injetar segredos como variáveis de ambiente)
 - **tui**: interface ncurses interativa
 
@@ -400,6 +412,9 @@ O Vaultine inclui um cliente CLI (`ssm-cli`) que expõe todas as operações da 
 ssm-cli --db vaultine.db user register alice
 ssm-cli --db vaultine.db secret store alice minha-chave /path/to/key --desc "Chave RSA"
 ssm-cli --db vaultine.db kek rotate alice
+ssm-cli --db vaultine.db backup create backup.bak --backup-key <hex64>
+ssm-cli --db vaultine.db export --format json
+ssm-cli --db vaultine.db db version
 ```
 
 O CLI suporta saída JSON (`--json`), senha inline (`--password`), e chave SQLCipher (`--db-key`).
@@ -419,11 +434,24 @@ O subcomando `ssm-cli tui` entra em modo ncurses com menus e formulários para t
 
 O TUI lê arquivos de chave do disco para `secret store`, exibe segredos como hex dump, e fornece listagem scrollável com paginação para `secret list`. Senhas são mascaradas com `*` durante a digitação.
 
-### 10.3 Operações em Lote
+### 10.3 Backup e Restore
+
+O subsistema de backup criptografa o banco SQLite inteiro em um arquivo autocontido:
+
+```
+[Header (32B)]       Magic "VAULTBKP" + versão + timestamp + nonce AES-GCM
+[Ciphertext]         sqlite.db criptografado com AES-256-GCM (backup_key)
+[Tag (16B)]          Tag de autenticação AES-GCM
+[HMAC-SHA256 (32B)]  HMAC-SHA256(header + ciphertext + tag, backup_key)
+```
+
+O restore descriptografa para um arquivo temporário, valida a integridade do schema e renomeia atomicamente sobre o banco original. Isto garante que backups parciais ou corrompidos nunca sobrescrevam um banco funcional.
+
+### 10.4 Operações em Lote
 
 Para usuários com milhares de segredos, `ssm_kek_rotate` faz uma descriptografia+criptografia por segredo. Operações em lote poderiam paralelizar isto (ex.: usando OpenMP ou thread pools), embora cuidado deva ser tomado com a serialização do SQLite.
 
-### 10.4 Integração de Chave Mestra
+### 10.5 Integração de Chave Mestra
 
 Uma chave mestra opcional (derivada de um TPM ou HSM) poderia prover uma camada adicional de proteção. A chave mestra wrapping cada KEK, independente da chave de wrapping derivada do usuário. Isto exigiria tanto a chave mestra QUANTO as credenciais do usuário para recuperar uma KEK.
 

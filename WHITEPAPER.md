@@ -4,7 +4,7 @@
 
 | Version | Date | Author |
 |---------|------|--------|
-| 1.1 | 2026-06 | Vaultine Engineering |
+| 1.2 | 2026-06 | Vaultine Engineering |
 
 ---
 
@@ -372,7 +372,7 @@ Approximate performance measurements on a modern x86_64 Linux system (Intel i7-1
 
 ## 10. Implemented vs Future Work
 
-The following features from the original design document have been implemented since v1.0:
+The following features have been implemented since v1.1:
 
 | Feature | Section | Status |
 |---------|---------|--------|
@@ -384,12 +384,51 @@ The following features from the original design document have been implemented s
 | Audit Log (`audit_log` table) | `src/db/audit_log.h` — all 9 operations logged | ✅ Implemented |
 | `kek_version` rollback protection | `src/db/kek_metadata.cc` — version check on update | ✅ Implemented |
 | CMake install rules + package config | `src/CMakeLists.txt` + `cmake/ssmConfig.cmake.in` | ✅ Implemented |
+| **Backup/Restore** (AES-256-GCM + HMAC) | `src/backup/backup.cc` — .bak file format | ✅ v1.2 |
+| **Database Export** (JSON/CSV) | `src/export/export.cc` — metadata streaming, PII redaction | ✅ v1.2 |
+| **Schema Migration** | `src/db/migrations.cc` — versioned PRAGMA, rollback | ✅ v1.2 |
+| **Fuzzing Targets** (3 targets) | `tests/fuzz/` — API, CLI, password lifecycle | ✅ v1.2 |
+| **Benchmark Suite** (10 benchmarks) | `tests/bench_ssm.cc` + `tools/bench_compare.py` | ✅ v1.2 |
+| **Memory Sanitizers** (ASan+UBSan) | `cmake/Sanitizer.cmake` — `-DSSM_SANITIZE=ON` | ✅ v1.2 |
+| **CLI: backup, export, db subcommands** | `cli/ssm_cli.cc` — dispatch with help | ✅ v1.2 |
 
-### 10.1 Batch Operations
+### 10.1 Backup and Restore
+
+The backup subsystem encrypts the entire SQLite database into a self-contained file:
+
+```
+[Header (32B)]       Magic "VAULTBKP" + version + timestamp + AES-GCM nonce
+[Ciphertext]         sqlite.db encrypted with AES-256-GCM (backup_key)
+[Tag (16B)]          AES-GCM authentication tag
+[HMAC-SHA256 (32B)]  HMAC-SHA256(header + ciphertext + tag, backup_key)
+```
+
+Restore decrypts to a temporary file, validates schema integrity, then atomically renames it over the original database. This ensures partial or corrupted backups never overwrite a working database.
+
+### 10.2 Database Export
+
+The export feature streams metadata to stdout in JSON or CSV format via a user-provided callback. No secret key material is ever included:
+
+- **Users**: username, created_at
+- **Secrets**: user, name, description, size, has_pub, updated_at
+- **KEK metadata**: user, expires_at, version
+
+PII redaction replaces usernames with anonymous identifiers (`user_1`, `user_2`) to prevent user enumeration when sharing exports.
+
+### 10.3 Schema Migration
+
+SQLite's `PRAGMA user_version` tracks schema version as a 4-byte integer:
+
+- **Version 1** (initial): 4-table schema (users, kek_metadata, secrets, audit_log)
+- **Version 2**: adds `idx_secrets_user_id` index
+
+Migrations run automatically on `ssm_init` and `ssm_backup_restore`. Each migration executes in its own `BEGIN IMMEDIATE ... COMMIT` transaction. Rollback is available for operations that provide reverse SQL.
+
+### 10.4 Batch Operations
 
 For users with thousands of secrets, `ssm_kek_rotate` does one decrypt+encrypt per secret. Batch operations could parallelize this (e.g., using OpenMP or thread pools), though care must be taken with SQLite serialization.
 
-### 10.2 Master Key Integration
+### 10.5 Master Key Integration
 
 An optional master key (derived from a TPM or HSM) could provide an additional layer of protection. The master key would wrap each KEK, independent of the user-derived wrapping key. This would require both the master key AND the user's credentials to recover a KEK.
 
