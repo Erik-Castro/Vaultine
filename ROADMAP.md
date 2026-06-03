@@ -223,10 +223,10 @@ CREATE TABLE audit_log (
 
 **Tarefas**:
 - [x] Expandir schema `audit_log` (operation_target, details)
-- [ ] Serializar details em JSON (usando texto simples por enquanto)
+- [x] Serializar details em JSON
 - [x] Log de todas as operações da API com context detalhado
-- [ ] Rotação de logs (ex: manter últimos 90 dias)
-- [ ] Query helper: `ssm_audit_log_query()`
+- [x] Rotação de logs (ex: manter últimos 90 dias)
+- [x] Query helper: `ssm_audit_log_query()`
 
 ---
 
