@@ -236,6 +236,7 @@ ssm-cli --help
 | `db migrate` | Aplica migrações pendentes |
 | `backup create/restore <file>` | Backup/restore criptografado |
 | `export [--format json\|csv] [--redact-pii]` | Exporta metadados para stdout |
+| `server start [--port] [--host] [--daemonize]` | REST API server (libevent evhttp) |
 | `cache-stats` | Estatísticas do cache de wrapping keys |
 | `audit-log <username>` | Consulta log de auditoria |
 | `env exec <username> <cmd>` | Injeta segredos como env vars |
@@ -247,6 +248,76 @@ ssm-cli --db /path/db tui       # com banco personalizado
 ssm-cli backup create vaultine.bak --backup-key <hex64>
 ssm-cli export --format json --redact-pii
 ssm-cli db version
+```
+
+## REST API Server
+
+O Vaultine inclui um servidor HTTP REST via `ssm-cli server start`, implementado com libevent evhttp + jsoncpp. Todas as respostas são JSON com `Content-Type: application/json`.
+
+```bash
+ssm-cli server start                    # localhost:8080
+ssm-cli server start --port 9090        # porta customizada
+ssm-cli server start --host 0.0.0.0     # todas as interfaces
+ssm-cli server start --daemonize        # background
+ssm-cli server start --daemonize --pidfile /run/ssm-cli.pid
+```
+
+### Endpoints
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `GET` | `/v1/health` | Health check |
+| `GET` | `/v1/version` | Versão da API |
+| `POST` | `/v1/users/<username>/register` | Registrar usuário |
+| `POST` | `/v1/users/<username>/auth` | Autenticar usuário |
+| `DELETE` | `/v1/users/<username>` | Deletar usuário |
+| `PUT` | `/v1/users/<username>/password` | Trocar senha |
+| `GET` | `/v1/users/<username>/secrets` | Listar segredos |
+| `POST` | `/v1/users/<username>/secrets` | Armazenar segredo |
+| `GET` | `/v1/users/<username>/secrets/<name>` | Recuperar segredo |
+| `DELETE` | `/v1/users/<username>/secrets/<name>` | Deletar segredo |
+| `POST` | `/v1/users/<username>/kek/rotate` | Rotacionar KEK |
+| `POST` | `/v1/backup/create` | Criar backup |
+| `POST` | `/v1/backup/restore` | Restaurar backup |
+| `GET` | `/v1/audit` | Log de auditoria |
+| `GET` | `/v1/export` | Exportar metadados |
+| `GET` | `/v1/cache/stats` | Estatísticas do cache |
+| `GET` | `/v1/db/version` | Versão do schema |
+| `POST` | `/v1/db/migrate` | Migrar schema |
+
+### Exemplo
+
+```bash
+# Iniciar servidor
+ssm-cli server start --port 8080 &
+
+# Registrar usuário
+curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"password":"minha-senha"}' \
+  http://127.0.0.1:8080/v1/users/alice/register
+
+# Armazenar segredo
+curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"name":"minha-chave","private_key":"deadbeef01020304"}' \
+  http://127.0.0.1:8080/v1/users/alice/secrets
+
+# Recuperar segredo
+curl -s http://127.0.0.1:8080/v1/users/alice/secrets/minha-chave
+```
+
+### Parâmetros de Query (Audit/Export)
+
+Os endpoints `/v1/audit` e `/v1/export` usam **cabeçalhos HTTP** para filtros:
+
+```bash
+curl -s -H "X-Audit-Username: alice" \
+  -H "X-Audit-Operation: secret_store" \
+  -H "X-Audit-Limit: 50" \
+  http://127.0.0.1:8080/v1/audit
+
+curl -s -H "X-Export-Format: csv" \
+  -H "X-Export-Redact: true" \
+  http://127.0.0.1:8080/v1/export
 ```
 
 ## API Pública

@@ -4,20 +4,20 @@
 
 ---
 
-## Current Status: v0.3.0-beta — Feature Complete
+## Current Status: v0.3.0-beta ✅
 
-O core do Vaultine está completo. O que resta é distribuição, bindings para linguagens faltantes, e auditoria de segurança externa.
+O core do Vaultine está completo: API C, CLI, TUI, REST API server, bindings (Python/Rust/Go/Node.js). O que resta é distribuição, bindings para linguagens faltantes, e auditoria de segurança externa.
 
 | Release | Status | O que inclui |
 |---------|--------|-------------|
 | **v0.1.0-alpha** | ✅ Entregue | API Core, CLI, TUI, Python bindings |
 | **v0.2.0-beta** | ✅ Entregue | Segurança (mlock, password validation, audit logs), testes (182), CI/CD, fuzzing, benchmark suite |
-| **v0.3.0-beta** | 🟡 **ATUAL** | Schema migration, backup/restore, export JSON/CSV, bindings (Rust/Go/Node.js) |
+| **v0.3.0-beta** | ✅ **ENTREGUE** | Schema migration, backup/restore, export JSON/CSV, bindings (Rust/Go/Node.js), REST API server |
 | **v1.0.0-rc** | 🔜 Próximo | Security audit, package managers, Docker, Java bindings, comunidade |
 
 ---
 
-## v0.3.0-beta — Feature Complete ✓
+## v0.3.0-beta — Feature Complete ✅
 
 ### Completado
 - [x] Schema migration (version tracking + rollback)
@@ -27,6 +27,7 @@ O core do Vaultine está completo. O que resta é distribuição, bindings para 
 - [x] Bindings: **Go** (package `vaultine`, 11 tests)
 - [x] Bindings: **Node.js** (N-API addon, 25 tests)
 - [x] CLI completo (user, secret, kek, cache-stats, env exec, tui)
+- [x] **REST API Server**: 17 endpoints via libevent evhttp + jsoncpp, daemonize support
 - [x] 182 testes C, testes de integração para todas as 3 linguagens
 - [x] Error message clarity, user enumeration fix
 

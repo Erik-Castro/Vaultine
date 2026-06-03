@@ -26,6 +26,19 @@ e este projeto segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - ✅ **Benchmark Suite**: 10 benchmarks (BM_KekRotate, BM_SecretList, BM_ChangePassword, BM_ConcurrentReads)
 - ✅ **Benchmark Delta Tool**: `tools/bench_compare.py` para comparação JSON
 
+#### 🌐 REST API Server
+- ✅ **REST API (libevent evhttp + jsoncpp)**: 17 endpoints sob `/v1/*`
+  - `GET /v1/health`, `GET /v1/version`
+  - `POST /v1/users/<user>/register|auth`, `DELETE /v1/users/<user>`, `PUT /v1/users/<user>/password`
+  - `GET|POST /v1/users/<user>/secrets`, `GET|DELETE /v1/users/<user>/secrets/<name>`
+  - `POST /v1/users/<user>/kek/rotate`
+  - `POST /v1/backup/create|restore`
+  - `GET /v1/audit`, `GET /v1/export`
+  - `GET /v1/cache/stats`, `GET /v1/db/version`, `POST /v1/db/migrate`
+- ✅ **Daemonize**: double-fork + setsid + pidfile (`--daemonize`)
+- ✅ **Signal handling**: SIGINT/SIGTERM graceful shutdown
+- ✅ **CLI dispatch**: `ssm-cli server start [--port] [--host] [--daemonize] [--pidfile]`
+
 #### 📚 Documentação
 - ✅ **PR/Issue Templates**: SDD checklist, security contact config
 - ✅ **ROADMAP sync**: itens 1.1.4, 1.2.1, 1.2.3, 1.3.2, 2.1.2, 2.2.1, 2.2.2 marcados como concluídos
