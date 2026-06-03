@@ -101,3 +101,23 @@ jobs:
           grep -r "password\s*=" src/ --include='*.cc' --include='*.h' && exit 1 || true
           grep -r "secret\s*=" src/ --include='*.cc' --include='*.h' && exit 1 || true
           echo "No hardcoded secrets found"
+
+  sanitizer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install deps
+        run: |
+          sudo apt update
+          sudo apt install -y libsqlcipher-dev libsodium-dev libssl-dev \
+            cmake pkg-config build-essential clang
+      - name: Build with ASan + UBSan
+        run: |
+          cmake -B build-san -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DSSM_SANITIZE=ON
+          cmake --build build-san
+      - name: Run tests with ASan
+        env:
+          ASAN_OPTIONS: "detect_leaks=1:detect_odr_violation=0:halt_on_error=1"
+        run: ctest --test-dir build-san --output-on-failure --timeout 300

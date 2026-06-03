@@ -20,6 +20,10 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(SQLCipher REQUIRED)
 
 include(FetchContent)
+
+# Sanitizer support (ASan + UBSan)
+include(cmake/Sanitizer.cmake)
+
 FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
