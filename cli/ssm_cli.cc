@@ -105,11 +105,13 @@ static void print_usage() {
         "  secret delete <username> <name>\n"
         "  secret list <username>\n"
         "  kek rotate <username>\n"
-         "  cache-stats      Show cache statistics\n"
-         "  tui              Interactive terminal interface\n"
-         "  env exec <username> [--] <command> [args...]\n"
-        "  help [command]\n",
-        g_prog);
+          "  cache-stats      Show cache statistics\n"
+          "  audit-log <username>  Query audit log (optional: --operation, --result,\n"
+          "                        --limit, --offset)\n"
+          "  tui              Interactive terminal interface\n"
+          "  env exec <username> [--] <command> [args...]\n"
+          "  help [command]\n",
+         g_prog);
 }
 
 static void print_help_user() {
@@ -474,6 +476,95 @@ static int handle_kek_rotate(int argc, char** argv) {
 }
 
 // -------------------------------------------------------------------
+// audit-log handler
+// -------------------------------------------------------------------
+struct audit_item {
+    std::string username;
+    std::string operation;
+    std::string target;
+    std::string details;
+    std::string result;
+    std::string timestamp;
+};
+
+static void audit_callback(int64_t id, int64_t user_id, const char* username,
+                            const char* operation, const char* operation_target,
+                            const char* details, const char* result,
+                            const char* timestamp, void* user_data) {
+    auto* items = static_cast<std::vector<audit_item>*>(user_data);
+    (void)id; (void)user_id;
+    items->push_back({username ? username : "",
+                      operation ? operation : "",
+                      operation_target ? operation_target : "",
+                      details ? details : "",
+                      result ? result : "",
+                      timestamp ? timestamp : ""});
+}
+
+static int handle_audit_log(int argc, char** argv) {
+    if (argc < 1) {
+        fprintf(stderr, "usage: %s audit-log <username> [--operation <op>] "
+                "[--result <res>] [--limit <n>] [--offset <n>]\n", g_prog);
+        return 1;
+    }
+    const char* username = argv[0];
+    const char* operation = nullptr;
+    const char* result = nullptr;
+    int64_t limit = 100;
+    int64_t offset = 0;
+
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--operation") == 0 && i + 1 < argc)
+            operation = argv[++i];
+        else if (std::strcmp(argv[i], "--result") == 0 && i + 1 < argc)
+            result = argv[++i];
+        else if (std::strcmp(argv[i], "--limit") == 0 && i + 1 < argc)
+            limit = std::atoll(argv[++i]);
+        else if (std::strcmp(argv[i], "--offset") == 0 && i + 1 < argc)
+            offset = std::atoll(argv[++i]);
+    }
+
+    ssm_handle* h = nullptr;
+    ssm_status st = ssm_init(&h, g_db_path, g_db_key_len ? g_db_key : nullptr,
+                              g_db_key_len);
+    if (st != SSM_OK) die_status(st, "ssm_init");
+
+    std::vector<audit_item> items;
+    st = ssm_audit_log_query(h, username, operation, result, limit, offset,
+                              audit_callback, &items);
+    ssm_destroy(h);
+    if (st != SSM_OK) die_status(st, "audit-log query");
+
+    if (g_json) {
+        printf("[");
+        for (size_t i = 0; i < items.size(); ++i) {
+            if (i > 0) printf(",");
+            printf("{\"username\":\"%s\",\"operation\":\"%s\","
+                   "\"target\":\"%s\",\"details\":%s,\"result\":\"%s\","
+                   "\"timestamp\":\"%s\"}",
+                   items[i].username.c_str(), items[i].operation.c_str(),
+                   items[i].target.c_str(), items[i].details.c_str(),
+                   items[i].result.c_str(), items[i].timestamp.c_str());
+        }
+        printf("]\n");
+    } else {
+        if (items.empty()) {
+            printf("no audit log entries for '%s'\n", username);
+        } else {
+            printf("%-20s %-18s %-12s %s\n", "operation", "target", "result", "timestamp");
+            printf("%-20s %-18s %-12s %s\n", "---------", "------", "------", "---------");
+            for (auto& item : items) {
+                printf("%-20s %-18s %-12s %s\n",
+                       item.operation.c_str(), item.target.c_str(),
+                       item.result.c_str(), item.timestamp.c_str());
+            }
+            printf("(%zu entries)\n", items.size());
+        }
+    }
+    return 0;
+}
+
+// -------------------------------------------------------------------
 // cache-stats handler
 // -------------------------------------------------------------------
 static int handle_cache_stats(int /*argc*/, char** /*argv*/) {
@@ -764,6 +855,8 @@ int main(int argc, char** argv) {
         return handle_tui(remaining, cmd_argv);
     if (std::strcmp(cmd, "cache-stats") == 0)
         return handle_cache_stats(remaining, cmd_argv);
+    if (std::strcmp(cmd, "audit-log") == 0)
+        return handle_audit_log(remaining, cmd_argv);
 
     fprintf(stderr, "%s: unknown command '%s'. Try --help\n", g_prog, cmd);
     return 1;

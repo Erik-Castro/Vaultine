@@ -42,21 +42,23 @@ bool kek_generate(const unsigned char* auth_hash, size_t auth_hash_len,
     if (*salt_len < KEK_SALT_LEN)
         return false;
 
-    unsigned char kek[KEK_KEY_LEN];
-    unsigned char wrapping_key[KEK_KEY_LEN];
+    secure_buffer<unsigned char> kek(KEK_KEY_LEN);
+    secure_buffer<unsigned char> wrapping_key(KEK_KEY_LEN);
+    if (!kek || !wrapping_key)
+        return false;
 
     bool ok = false;
     do {
-        random_bytes(kek, sizeof(kek));
+        random_bytes(kek.data(), kek.size());
         random_bytes(salt_out, KEK_SALT_LEN);
         *salt_len = KEK_SALT_LEN;
 
-        if (!kek_derive_wrapping_key(auth_hash, auth_hash_len, salt_out, KEK_SALT_LEN, wrapping_key,
-                                     sizeof(wrapping_key)))
+        if (!kek_derive_wrapping_key(auth_hash, auth_hash_len, salt_out, KEK_SALT_LEN,
+                                     wrapping_key.data(), wrapping_key.size()))
             break;
 
-        if (!aes_kw_wrap(kek, sizeof(kek), wrapping_key, sizeof(wrapping_key), wrapped_kek_out,
-                         wrapped_kek_len))
+        if (!aes_kw_wrap(kek.data(), kek.size(), wrapping_key.data(), wrapping_key.size(),
+                         wrapped_kek_out, wrapped_kek_len))
             break;
 
         if (!kek_expires_at(KEK_DEFAULT_DAYS, expires_at_out, expires_at_size))
@@ -65,8 +67,6 @@ bool kek_generate(const unsigned char* auth_hash, size_t auth_hash_len,
         ok = true;
     } while (false);
 
-    secure_erase(kek, sizeof(kek));
-    secure_erase(wrapping_key, sizeof(wrapping_key));
     return ok;
 }
 
@@ -78,22 +78,24 @@ bool kek_unwrap(const unsigned char* wrapped_kek, size_t wrapped_kek_len,
     if (salt_len < KEK_SALT_LEN)
         return false;
 
-    unsigned char wrapping_key[KEK_KEY_LEN];
+    secure_buffer<unsigned char> wrapping_key(KEK_KEY_LEN);
+    if (!wrapping_key)
+        return false;
+
     bool ok = false;
 
     do {
-        if (!kek_derive_wrapping_key(auth_hash, auth_hash_len, salt, KEK_SALT_LEN, wrapping_key,
-                                     sizeof(wrapping_key)))
+        if (!kek_derive_wrapping_key(auth_hash, auth_hash_len, salt, KEK_SALT_LEN,
+                                     wrapping_key.data(), wrapping_key.size()))
             break;
 
-        if (!aes_kw_unwrap(wrapped_kek, wrapped_kek_len, wrapping_key, sizeof(wrapping_key),
-                           kek_out, kek_len))
+        if (!aes_kw_unwrap(wrapped_kek, wrapped_kek_len, wrapping_key.data(),
+                           wrapping_key.size(), kek_out, kek_len))
             break;
 
         ok = true;
     } while (false);
 
-    secure_erase(wrapping_key, sizeof(wrapping_key));
     return ok;
 }
 
@@ -136,11 +138,16 @@ bool kek_rotate(sqlite3* db, int64_t user_id, const unsigned char* auth_hash,
 
     sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
 
-    unsigned char wrapping_key[KEK_KEY_LEN];
-    unsigned char new_kek[KEK_KEY_LEN];
-    unsigned char new_wrapping_key[KEK_KEY_LEN];
-    unsigned char new_salt[KEK_SALT_LEN];
-    unsigned char new_wrapped[64];
+    secure_buffer<unsigned char> wrapping_key(KEK_KEY_LEN);
+    secure_buffer<unsigned char> new_kek(KEK_KEY_LEN);
+    secure_buffer<unsigned char> new_wrapping_key(KEK_KEY_LEN);
+    secure_buffer<unsigned char> new_salt(KEK_SALT_LEN);
+    secure_buffer<unsigned char> new_wrapped(64);
+    secure_buffer<unsigned char> old_kek_raw(KEK_KEY_LEN);
+    if (!wrapping_key || !new_kek || !new_wrapping_key || !new_salt || !new_wrapped ||
+        !old_kek_raw)
+        return false;
+
     size_t new_wrapped_len = 0;
     char new_expires[24];
 
@@ -151,48 +158,40 @@ bool kek_rotate(sqlite3* db, int64_t user_id, const unsigned char* auth_hash,
         if (!kek_find_by_user(db, user_id, &old_kek))
             break;
 
-        unsigned char old_kek_raw[KEK_KEY_LEN];
-        size_t old_kek_len = sizeof(old_kek_raw);
+        size_t old_kek_len = old_kek_raw.size();
         if (!kek_unwrap(old_kek.wrapped_kek.data(), old_kek.wrapped_kek.size(), auth_hash,
-                        auth_hash_len, old_kek.salt.data(), old_kek.salt.size(), old_kek_raw,
-                        &old_kek_len))
+                        auth_hash_len, old_kek.salt.data(), old_kek.salt.size(),
+                        old_kek_raw.data(), &old_kek_len))
             break;
 
         // --- load all secrets ---
         std::vector<secret_row> secrets;
-        if (!secrets_list_for_user(db, user_id, &secrets)) {
-            secure_erase(old_kek_raw, sizeof(old_kek_raw));
+        if (!secrets_list_for_user(db, user_id, &secrets))
             break;
-        }
 
         // --- generate new KEK + salt ---
-        random_bytes(new_kek, sizeof(new_kek));
-        random_bytes(new_salt, sizeof(new_salt));
+        random_bytes(new_kek.data(), new_kek.size());
+        random_bytes(new_salt.data(), new_salt.size());
 
-        if (!kek_derive_wrapping_key(auth_hash, auth_hash_len, new_salt, sizeof(new_salt),
-                                     new_wrapping_key, sizeof(new_wrapping_key))) {
-            secure_erase(old_kek_raw, sizeof(old_kek_raw));
+        if (!kek_derive_wrapping_key(auth_hash, auth_hash_len, new_salt.data(), new_salt.size(),
+                                     new_wrapping_key.data(), new_wrapping_key.size()))
             break;
-        }
 
-        if (!aes_kw_wrap(new_kek, sizeof(new_kek), new_wrapping_key, sizeof(new_wrapping_key),
-                         new_wrapped, &new_wrapped_len)) {
-            secure_erase(old_kek_raw, sizeof(old_kek_raw));
+        if (!aes_kw_wrap(new_kek.data(), new_kek.size(), new_wrapping_key.data(),
+                         new_wrapping_key.size(), new_wrapped.data(), &new_wrapped_len))
             break;
-        }
 
-        if (!kek_expires_at(KEK_DEFAULT_DAYS, new_expires, sizeof(new_expires))) {
-            secure_erase(old_kek_raw, sizeof(old_kek_raw));
+        if (!kek_expires_at(KEK_DEFAULT_DAYS, new_expires, sizeof(new_expires)))
             break;
-        }
 
         // --- re-encrypt each secret ---
         bool rotation_ok = true;
         for (auto& secret : secrets) {
             secure_vector<unsigned char> plain_priv(secret.private_key.size());
-            if (!aes_gcm_decrypt(secret.private_key.data(), secret.private_key.size(), old_kek_raw,
-                                 old_kek_len, secret.nonce.data(), secret.nonce.size(), nullptr, 0,
-                                 secret.tag.data(), secret.tag.size(), plain_priv.data())) {
+            if (!aes_gcm_decrypt(secret.private_key.data(), secret.private_key.size(),
+                                 old_kek_raw.data(), old_kek_len, secret.nonce.data(),
+                                 secret.nonce.size(), nullptr, 0, secret.tag.data(),
+                                 secret.tag.size(), plain_priv.data())) {
                 rotation_ok = false;
                 break;
             }
@@ -202,9 +201,9 @@ bool kek_rotate(sqlite3* db, int64_t user_id, const unsigned char* auth_hash,
             random_bytes(new_nonce, sizeof(new_nonce));
 
             secure_vector<unsigned char> new_priv(plain_priv.size());
-            if (!aes_gcm_encrypt(plain_priv.data(), plain_priv.size(), new_kek, sizeof(new_kek),
-                                 new_nonce, sizeof(new_nonce), nullptr, 0, new_priv.data(),
-                                 new_priv_tag, sizeof(new_priv_tag))) {
+            if (!aes_gcm_encrypt(plain_priv.data(), plain_priv.size(), new_kek.data(),
+                                 new_kek.size(), new_nonce, sizeof(new_nonce), nullptr, 0,
+                                 new_priv.data(), new_priv_tag, sizeof(new_priv_tag))) {
                 rotation_ok = false;
                 break;
             }
@@ -243,22 +242,16 @@ bool kek_rotate(sqlite3* db, int64_t user_id, const unsigned char* auth_hash,
             }
         }
 
-        secure_erase(old_kek_raw, sizeof(old_kek_raw));
-
         if (!rotation_ok)
             break;
 
         // --- update kek_metadata (increment kek_version) ---
-        if (!kek_update(db, user_id, new_wrapped, new_wrapped_len, new_salt, sizeof(new_salt),
-                        new_expires, old_kek.kek_version))
+        if (!kek_update(db, user_id, new_wrapped.data(), new_wrapped_len, new_salt.data(),
+                        new_salt.size(), new_expires, old_kek.kek_version))
             break;
 
         ok = true;
     } while (false);
-
-    secure_erase(wrapping_key, sizeof(wrapping_key));
-    secure_erase(new_kek, sizeof(new_kek));
-    secure_erase(new_wrapping_key, sizeof(new_wrapping_key));
 
     if (ok)
         sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr);

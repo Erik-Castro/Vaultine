@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 
 #if defined(__GNUC__) || defined(__clang__)
 #define SSM_EXPORT __attribute__((visibility("default")))
@@ -71,6 +72,19 @@ typedef struct {
 } ssm_cache_stats;
 
 SSM_EXPORT ssm_status ssm_cache_get_stats(ssm_handle* h, ssm_cache_stats* out);
+
+typedef void (*ssm_audit_log_cb)(int64_t id, int64_t user_id,
+                                  const char* username, const char* operation,
+                                  const char* operation_target,
+                                  const char* details, const char* result,
+                                  const char* timestamp, void* user_data);
+
+SSM_EXPORT ssm_status ssm_audit_log_query(ssm_handle* h, const char* username,
+                                           const char* operation,
+                                           const char* result, int64_t limit,
+                                           int64_t offset,
+                                           ssm_audit_log_cb callback,
+                                           void* user_data);
 
 SSM_EXPORT const char* ssm_status_to_string(ssm_status status);
 

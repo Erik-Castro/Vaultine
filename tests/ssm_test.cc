@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <thread>
@@ -676,14 +677,14 @@ TEST_F(AuditLogTest, RegisterDuplicateHasDetails) {
     ASSERT_EQ(ssm_user_register(handle_, "dup", "p@ssw0rd"), SSM_OK);
     ASSERT_EQ(ssm_user_register(handle_, "dup", "p@ssw0rd"), SSM_ERR_AUTH);
     EXPECT_TRUE(audit_has_details(path_, "user_register", "SSM_ERR_AUTH",
-                                   "username already exists"));
+                                    "{\"error\":\"username already exists\"}"));
 }
 
 TEST_F(AuditLogTest, AuthUnknownUserHasDetails) {
     int valid = 1;
     ssm_user_authenticate(handle_, "ghost", "x", &valid);
     EXPECT_TRUE(audit_has_details(path_, "user_authenticate", "SSM_ERR_AUTH",
-                                   "user not found"));
+                                    "{\"error\":\"user not found\"}"));
 }
 
 TEST_F(AuditLogTest, AuthWrongPasswordHasDetails) {
@@ -691,7 +692,7 @@ TEST_F(AuditLogTest, AuthWrongPasswordHasDetails) {
     int valid = 1;
     ssm_user_authenticate(handle_, "alice", "wrong", &valid);
     EXPECT_TRUE(audit_has_details(path_, "user_authenticate", "SSM_ERR_AUTH",
-                                   "password mismatch"));
+                                    "{\"error\":\"password mismatch\"}"));
 }
 
 TEST_F(AuditLogTest, SecretStoreHasTargetAndDetails) {
@@ -750,7 +751,7 @@ TEST_F(AuditLogTest, ExpiredKekLogsTargetAndDetails) {
     EXPECT_TRUE(audit_has_target(path_, "secret_get", "SSM_ERR_EXPIRED",
                                   "exp-key"));
     EXPECT_TRUE(audit_has_details(path_, "secret_get", "SSM_ERR_EXPIRED",
-                                   "KEK expired"));
+                                    "{\"error\":\"KEK expired\"}"));
 }
 
 TEST_F(AuditLogTest, UserDeleteRecordsResult) {
@@ -763,7 +764,7 @@ TEST_F(AuditLogTest, UserDeleteWrongPasswordHasDetails) {
     ASSERT_EQ(ssm_user_register(handle_, "grace", "correct"), SSM_OK);
     ASSERT_EQ(ssm_user_delete(handle_, "grace", "wrong"), SSM_ERR_AUTH);
     EXPECT_TRUE(audit_has_details(path_, "user_delete", "SSM_ERR_AUTH",
-                                   "password mismatch"));
+                                    "{\"error\":\"password mismatch\"}"));
 }
 
 TEST_F(AuditLogTest, KekRotateRecordsSuccess) {
@@ -783,6 +784,89 @@ TEST_F(AuditLogTest, SecretListRecordsResult) {
     auto cb = [](const char*, const char*, const char*, size_t, void*) {};
     ASSERT_EQ(ssm_secret_list(handle_, "judy", cb, nullptr), SSM_OK);
     EXPECT_EQ(audit_count(path_, "secret_list", "SSM_OK"), 1);
+}
+
+// ── Audit log query ──────────────────────────────────────────────
+
+struct query_collector {
+    std::vector<int64_t> ids;
+    std::vector<std::string> operations;
+    std::vector<std::string> targets;
+    std::vector<std::string> details;
+    std::vector<std::string> results;
+};
+
+static void query_cb(int64_t id, int64_t /*user_id*/, const char* username,
+                      const char* operation, const char* target,
+                      const char* details, const char* result,
+                      const char* timestamp, void* user_data) {
+    auto* c = static_cast<query_collector*>(user_data);
+    (void)username; (void)timestamp;
+    c->ids.push_back(id);
+    c->operations.push_back(operation ? operation : "");
+    c->targets.push_back(target ? target : "");
+    c->details.push_back(details ? details : "");
+    c->results.push_back(result ? result : "");
+}
+
+TEST_F(AuditLogTest, QueryAllReturnsEntries) {
+    ASSERT_EQ(ssm_user_register(handle_, "query_user", "p@ss"), SSM_OK);
+    const unsigned char priv[] = "test-key-data-32bytes!!";
+    ASSERT_EQ(ssm_secret_store(handle_, "query_user", priv, sizeof(priv),
+                                nullptr, 0, "qkey", nullptr), SSM_OK);
+
+    query_collector c;
+    EXPECT_EQ(ssm_audit_log_query(handle_, "query_user", nullptr, nullptr,
+                                   100, 0, query_cb, &c), SSM_OK);
+    EXPECT_GE(c.ids.size(), 2);
+    bool found_register = false;
+    bool found_store = false;
+    for (auto& op : c.operations) {
+        if (op == "user_register") found_register = true;
+        if (op == "secret_store") found_store = true;
+    }
+    EXPECT_TRUE(found_register);
+    EXPECT_TRUE(found_store);
+}
+
+TEST_F(AuditLogTest, QueryFilterByOperation) {
+    ASSERT_EQ(ssm_user_register(handle_, "filter_user", "p@ss"), SSM_OK);
+    ASSERT_EQ(ssm_kek_rotate(handle_, "filter_user"), SSM_OK);
+
+    query_collector c;
+    EXPECT_EQ(ssm_audit_log_query(handle_, "filter_user", "kek_rotate",
+                                   nullptr, 100, 0, query_cb, &c), SSM_OK);
+    EXPECT_EQ(c.operations.size(), 1);
+    EXPECT_EQ(c.operations[0], "kek_rotate");
+}
+
+TEST_F(AuditLogTest, QueryFilterByResult) {
+    ASSERT_EQ(ssm_user_register(handle_, "result_user", "p@ss"), SSM_OK);
+    // trigger an error
+    int valid = 0;
+    ssm_user_authenticate(handle_, "result_user", "wrong", &valid);
+
+    query_collector c;
+    EXPECT_EQ(ssm_audit_log_query(handle_, "result_user", nullptr,
+                                   "SSM_ERR_AUTH", 100, 0, query_cb, &c), SSM_OK);
+    EXPECT_GE(c.ids.size(), 1);
+    for (auto& res : c.results)
+        EXPECT_EQ(res, "SSM_ERR_AUTH");
+}
+
+TEST_F(AuditLogTest, QueryRespectsLimit) {
+    ASSERT_EQ(ssm_user_register(handle_, "limit_user", "p@ss"), SSM_OK);
+
+    query_collector c;
+    EXPECT_EQ(ssm_audit_log_query(handle_, "limit_user", nullptr, nullptr,
+                                   0, 0, query_cb, &c), SSM_OK);
+    EXPECT_LE(c.ids.size(), 1);  // limit 0 → default 100 → but only 1 entry
+    (void)c;
+}
+
+TEST_F(AuditLogTest, NullHandleReturnsError) {
+    EXPECT_EQ(ssm_audit_log_query(nullptr, "x", nullptr, nullptr, 10, 0,
+                                   query_cb, nullptr), SSM_ERR_INTERNAL);
 }
 
 }  // namespace
