@@ -870,32 +870,53 @@ Senha do Usuário
 
 ## Ciclo de Vida da KEK
 
+```mermaid
+stateDiagram-v2
+    [*] --> Válida : usuário registrado
+    Válida --> Expirada : 90 dias sem rotação
+    Válida --> Rotacionando : ssm_kek_rotate
+    Rotacionando --> Válida : wrap + re-encrypt + commit
+    Expirada --> Rotacionando : ssm_kek_rotate (forçado)
+    Rotacionando --> Expirada : rollback
+```
+
 ### Validade
 
 - Padrão: **90 dias** (`KEK_DEFAULT_DAYS = 90`), configurável por tenant.
 - Toda operação (`ssm_secret_store`, `ssm_secret_get`) verifica `kek_is_expired`.
 - Se expirado, retorna `SSM_ERR_EXPIRED`. O usuário deve forçar `ssm_kek_rotate`.
 
-### Rotação
+### Rotação (transação ACID)
 
-```
-1. BEGIN IMMEDIATE (lock exclusivo)
-2. Carregar KEK atual + salt do DB
-3. Derivar wrapping_key atual (auth_hash + salt_velho)
-4. Unwrapp KEK atual
-5. Listar TODOS os segredos do usuário
-6. Para cada segredo:
-   a. AES-GCM decrypt com KEK velho
-   b. Gerar novo nonce
-   c. AES-GCM encrypt com KEK novo + novo nonce
-   d. UPDATE na mesma transação
-7. Gerar novo salt
-8. Derivar nova wrapping_key (auth_hash + salt_novo)
-9. AES-KW wrap do novo KEK
-10. Calcular nova data de expiração (now + 90d)
-11. UPDATE kek_metadata
-12. COMMIT
-13. Se QUALQUER passo falhar → ROLLBACK
+```mermaid
+sequenceDiagram
+    participant App
+    participant Vaultine
+    participant SQLite
+    App->>Vaultine: ssm_kek_rotate(user)
+    Vaultine->>SQLite: BEGIN IMMEDIATE (lock exclusivo)
+    Vaultine->>SQLite: SELECT wrapped_kek, salt
+    Vaultine->>Vaultine: derivar wrapping_key (auth_hash + salt_velho)
+    Vaultine->>Vaultine: AES-KW unwrap → KEK atual
+    Vaultine->>SQLite: SELECT * FROM secrets WHERE user_id = ?
+    loop Para cada segredo
+        Vaultine->>Vaultine: AES-GCM decrypt (KEK velho)
+        Vaultine->>Vaultine: gerar novo nonce
+        Vaultine->>Vaultine: AES-GCM encrypt (KEK novo + nonce)
+        Vaultine->>SQLite: UPDATE secrets
+    end
+    Vaultine->>Vaultine: gerar novo salt
+    Vaultine->>Vaultine: derivar wrapping_key (auth_hash + salt_novo)
+    Vaultine->>Vaultine: AES-KW wrap (KEK novo)
+    Vaultine->>Vaultine: calcular expires_at (now + 90d)
+    Vaultine->>SQLite: UPDATE kek_metadata
+    Vaultine->>SQLite: COMMIT
+    alt Qualquer passo falha
+        Vaultine->>SQLite: ROLLBACK
+        Vaultine-->>App: SSM_ERR_INTERNAL
+    else Sucesso
+        Vaultine-->>App: SSM_OK
+    end
 ```
 
 ### Segurança
