@@ -95,7 +95,8 @@ bool db_create_schema(sqlite3* db) {
         "  nonce BLOB NOT NULL,"
         "  tag BLOB NOT NULL,"
         "  description TEXT,"
-        "  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))"
+        "  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+        "  UNIQUE(user_id, name)"
         ");"
 
         "CREATE TABLE IF NOT EXISTS audit_log ("

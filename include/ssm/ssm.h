@@ -15,6 +15,8 @@ extern "C" {
 
 typedef struct ssm_handle ssm_handle;
 
+#define SSM_USERNAME_MAX 255
+
 // Named + fixed underlying type for forward-declaration by private headers (e.g., export.h)
 #ifdef __cplusplus
 typedef enum ssm_status_e : int {

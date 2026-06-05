@@ -74,26 +74,26 @@ TEST_F(MigrationTest, Rollback) {
     sqlite3_finalize(stmt);
 }
 
-TEST_F(MigrationTest, RollbackFromVersion2To1) {
+TEST_F(MigrationTest, RollbackFromVersion3To1) {
     ASSERT_TRUE(db_migrate(db_));
-    ASSERT_EQ(db_get_version(db_), 2);
+    ASSERT_EQ(db_get_version(db_), 3);
 
     EXPECT_TRUE(db_rollback(db_, 1));
     EXPECT_EQ(db_get_version(db_), 1);
 }
 
 TEST_F(MigrationTest, RollbackMigrateRoundtrip) {
-    // 1 → 2
+    // 1 → 3
     ASSERT_TRUE(db_migrate(db_));
-    ASSERT_EQ(db_get_version(db_), 2);
+    ASSERT_EQ(db_get_version(db_), 3);
 
-    // 2 → 1
+    // 3 → 1
     ASSERT_TRUE(db_rollback(db_, 1));
     ASSERT_EQ(db_get_version(db_), 1);
 
-    // 1 → 2 again
+    // 1 → 3 again
     EXPECT_TRUE(db_migrate(db_));
-    EXPECT_EQ(db_get_version(db_), 2);
+    EXPECT_EQ(db_get_version(db_), 3);
 }
 
 TEST_F(MigrationTest, NullDb) {

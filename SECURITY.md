@@ -1,7 +1,7 @@
 # Security Policy
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.3.1--beta-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.2--beta-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/vulnerability-report%20via%20email-critical?style=flat-square" alt="Report">
 </p>
@@ -54,6 +54,19 @@ We will:
 5. **Rotate KEK periodically** — every 90 days minimum
 6. **Use SQLCipher** — enable encrypt-at-rest with a strong `--db-key`
 7. **Keep system patched** — no secrets in kernel logs or core dumps
+
+### Auditoria de Segurança
+
+Uma auditoria interna de segurança foi concluída em junho de 2026, cobrindo todo o código-fonte (src/, cli/, tests/). **Todos os 11 achados foram corrigidos** (3 críticos, 4 altos, 4 médios). A auditoria focou em:
+- Vazamento de material criptográfico na stack/heap
+- Previsibilidade de caminhos de arquivos temporários
+- Path traversal em operações de backup
+- Exposição de senhas via command line (`ps`)
+- Falta de autenticação no servidor REST
+- Enumeração de usuários via timing/error codes
+- Validação de entrada (username, permissões de config file)
+
+---
 
 ## Supported Versions
 

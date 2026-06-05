@@ -7,6 +7,32 @@ e este projeto segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.2-beta] — 2026-06-05
+
+### 🔒 Correções de Segurança (11/11 findings)
+
+#### 🚨 Críticas (3/3)
+
+- **C4 — secure_vector sem mlock**: constructor/resize trocados de `::operator new[]` para `secure_alloc()`, clear/destructor para `secure_free()`. Agora `secure_vector` faz `mlock` como esperado pelo seu nome.
+- **C3 — Senhas visíveis em ps**: suporte a env vars `SSM_PASSWORD`, `SSM_DB_KEY`, `SSM_BACKUP_KEY`. Valores via CLI flags continuam funcionando mas env vars não aparecem em `ps`.
+- **C1 — REST server sem autenticação**: adicionado `X-API-Key` header check via `--api-key` CLI flag ou `SSM_API_KEY` env var. `/v1/health` e `/v1/version` permanecem públicos.
+
+#### ⚠️ Altas (4/4)
+
+- **H8 — Chaves derivadas na stack sem wipe**: `enc_key`, `auth_key`, `hmac`, `hmac_computed`, e estados SHA-256 agora são `secure_erase()`d em todas as funções de backup.
+- **H6 — Password globals sem wipe on exit**: `g_password`/`g_cfg_password` wrappeados em `secure_string` (RAII que faz `sodium_memzero` no destructor).
+- **H4 — Temp file previsível**: `.basename.tmp` substituído por `mkstemp()` com template `.basename.XXXXXX` em backup restore.
+- **H2 — Path traversal**: `has_path_traversal()` rejeita `..` como componente em `backup_create`/`backup_restore`.
+
+#### 🎯 Médias (4/4)
+
+- **M4 — Config file permissões**: `load_config()` emite warning se arquivo tem permissões group/other (recomenda `chmod 600`).
+- **M9 — UNIQUE(user_id,name)**: adicionado constraint via migration v2→v3 (`CREATE UNIQUE INDEX`) e atualizado CREATE TABLE para novas DBs.
+- **M11 — Username max length**: constante `SSM_USERNAME_MAX=255` validada em todas as APIs de gerenciamento de usuário.
+- **M1-M2 — User enumeration**: códigos de erro já uniformes — `ssm_user_register` retorna `SSM_OK` para duplicatas, `ssm_user_authenticate` retorna `*is_valid=0` tanto para usuário inexistente quanto senha errada.
+
+---
+
 ## [0.3.1-beta] — 2026-06-03
 
 ### 🔧 Otimizações & Correções (33 itens)

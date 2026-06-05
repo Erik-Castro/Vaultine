@@ -52,6 +52,18 @@ bool write_file(const char* path, const unsigned char* data, size_t len) {
     return ok;
 }
 
+bool has_path_traversal(const char* path) {
+    if (!path)
+        return true;
+    if (path[0] == '\0')
+        return true;
+    if (std::strcmp(path, "..") == 0 || std::strncmp(path, "../", 3) == 0)
+        return true;
+    if (std::strstr(path, "/../") != nullptr)
+        return true;
+    return false;
+}
+
 }  // namespace
 
 static void derive_backup_keys(const unsigned char* key, size_t key_len,
@@ -62,17 +74,21 @@ static void derive_backup_keys(const unsigned char* key, size_t key_len,
                               14);
     crypto_hash_sha256_update(&st, key, key_len);
     crypto_hash_sha256_final(&st, enc_key);
+    secure_erase(st);
 
     crypto_hash_sha256_init(&st);
     crypto_hash_sha256_update(&st, reinterpret_cast<const unsigned char*>("ssm-backup-auth"),
                               15);
     crypto_hash_sha256_update(&st, key, key_len);
     crypto_hash_sha256_final(&st, auth_key);
+    secure_erase(st);
 }
 
 bool backup_create(const char* src_path, const char* dst_path, const unsigned char* key,
                    size_t key_len) {
     if (!src_path || !dst_path || !key || key_len != 32)
+        return false;
+    if (has_path_traversal(dst_path))
         return false;
 
     unsigned char enc_key[32];
@@ -81,8 +97,11 @@ bool backup_create(const char* src_path, const char* dst_path, const unsigned ch
 
     unsigned char* db_data = nullptr;
     size_t db_len = 0;
-    if (!read_file(src_path, &db_data, &db_len))
+    if (!read_file(src_path, &db_data, &db_len)) {
+        secure_erase(enc_key);
+        secure_erase(auth_key);
         return false;
+    }
 
     bool ok = false;
     do {
@@ -125,10 +144,15 @@ bool backup_create(const char* src_path, const char* dst_path, const unsigned ch
 
         ok = write_file(dst_path, out, out_len);
 
+        secure_erase(hmac);
+        secure_erase(state);
+        secure_erase(ciphertext, ciphertext_len);
         delete[] ciphertext;
         delete[] out;
     } while (false);
 
+    secure_erase(enc_key);
+    secure_erase(auth_key);
     secure_erase(db_data, db_len);
     delete[] db_data;
     return ok;
@@ -138,6 +162,8 @@ bool backup_restore(const char* src_path, const char* dst_path, const unsigned c
                     size_t key_len) {
     if (!src_path || !dst_path || !key || key_len != 32)
         return false;
+    if (has_path_traversal(src_path) || has_path_traversal(dst_path))
+        return false;
 
     unsigned char enc_key[32];
     unsigned char auth_key[32];
@@ -145,8 +171,11 @@ bool backup_restore(const char* src_path, const char* dst_path, const unsigned c
 
     unsigned char* backup_data = nullptr;
     size_t backup_len = 0;
-    if (!read_file(src_path, &backup_data, &backup_len))
+    if (!read_file(src_path, &backup_data, &backup_len)) {
+        secure_erase(enc_key);
+        secure_erase(auth_key);
         return false;
+    }
 
     bool ok = false;
     do {
@@ -176,9 +205,13 @@ bool backup_restore(const char* src_path, const char* dst_path, const unsigned c
         crypto_auth_hmacsha256_update(&state, ciphertext, ciphertext_len);
         crypto_auth_hmacsha256_update(&state, tag, BACKUP_TAG_LEN);
         crypto_auth_hmacsha256_final(&state, hmac_computed);
+        secure_erase(state);
 
-        if (sodium_memcmp(hmac_computed, hmac_stored, BACKUP_HMAC_LEN) != 0)
+        if (sodium_memcmp(hmac_computed, hmac_stored, BACKUP_HMAC_LEN) != 0) {
+            secure_erase(hmac_computed);
             break;
+        }
+        secure_erase(hmac_computed);
 
         // Decrypt
         auto* plaintext = new unsigned char[ciphertext_len];
@@ -199,6 +232,8 @@ bool backup_restore(const char* src_path, const char* dst_path, const unsigned c
         delete[] plaintext;
     } while (false);
 
+    secure_erase(enc_key);
+    secure_erase(auth_key);
     secure_erase(backup_data, backup_len);
     delete[] backup_data;
     return ok;

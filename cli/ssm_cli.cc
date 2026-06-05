@@ -29,13 +29,17 @@ size_t g_db_key_len = 0;
 static unsigned char g_backup_key[32];
 static size_t g_backup_key_len = 0;
 static bool g_json = false;
-static std::string g_password;
+struct secure_string {
+    std::string s;
+    ~secure_string() { if (!s.empty()) sodium_memzero(&s[0], s.size()); }
+};
+static secure_string g_password;
 
 // -------------------------------------------------------------------
 // Config file
 // -------------------------------------------------------------------
 static std::string g_cfg_db_path;
-static std::string g_cfg_password;
+static secure_string g_cfg_password;
 static std::string g_cfg_db_key_hex;
 static std::string g_cfg_backup_key_hex;
 
@@ -62,6 +66,9 @@ static ConfigFile load_config() {
         if (stat(path, &st) != 0)
             continue;
 
+        if (st.st_mode & (S_IRWXG | S_IRWXO))
+            fprintf(stderr, "warning: %s has group/other permissions (use chmod 600)\n", path);
+
         std::ifstream ifs(path);
         if (!ifs.is_open())
             continue;
@@ -78,7 +85,7 @@ static ConfigFile load_config() {
         if (root.isMember("db_key") && root["db_key"].isString())
             g_cfg_db_key_hex = root["db_key"].asString();
         if (root.isMember("password") && root["password"].isString())
-            g_cfg_password = root["password"].asString();
+            g_cfg_password.s = root["password"].asString();
         if (root.isMember("backup_key") && root["backup_key"].isString())
             g_cfg_backup_key_hex = root["backup_key"].asString();
         if (root.isMember("json") && root["json"].isBool())
@@ -124,8 +131,8 @@ static std::string read_password(const char* prompt) {
 }
 
 static std::string prompt_password(const char* username) {
-    if (!g_password.empty())
-        return g_password;
+    if (!g_password.s.empty())
+        return g_password.s;
     char prompt[256];
     std::snprintf(prompt, sizeof(prompt), "password for %s: ", username);
     return read_password(prompt);
@@ -1108,14 +1115,29 @@ int main(int argc, char** argv) {
         if (!hex_decode(g_cfg_db_key_hex.c_str(), g_db_key, &g_db_key_len))
             die("invalid db_key in config file");
     }
-    if (!g_cfg_password.empty())
-        g_password = g_cfg_password;
+    if (!g_cfg_password.s.empty())
+        g_password.s = g_cfg_password.s;
     if (!g_cfg_backup_key_hex.empty()) {
         if (!hex_decode(g_cfg_backup_key_hex.c_str(), g_backup_key, &g_backup_key_len) || g_backup_key_len != 32)
             die("invalid backup_key in config file (must be 64 hex chars)");
     }
     if (cf.json)
         g_json = true;
+
+    // Env vars override config, CLI overrides env
+    const char* env_pw = std::getenv("SSM_PASSWORD");
+    if (env_pw)
+        g_password.s = env_pw;
+    const char* env_db_key = std::getenv("SSM_DB_KEY");
+    if (env_db_key) {
+        if (!hex_decode(env_db_key, g_db_key, &g_db_key_len))
+            die("invalid SSM_DB_KEY (must be hex, up to 64 chars)");
+    }
+    const char* env_bk = std::getenv("SSM_BACKUP_KEY");
+    if (env_bk) {
+        if (!hex_decode(env_bk, g_backup_key, &g_backup_key_len) || g_backup_key_len != 32)
+            die("SSM_BACKUP_KEY must be 64 hex chars (32 bytes)");
+    }
 
     int opt;
     while ((opt = getopt_long(argc, argv, "+h", long_opts, nullptr)) != -1) {
@@ -1128,7 +1150,7 @@ int main(int argc, char** argv) {
                     die("invalid --db-key (must be hex, up to 64 chars)");
                 break;
             case OPT_PASSWORD:
-                g_password = optarg;
+                g_password.s = optarg;
                 break;
             case OPT_BACKUP_KEY:
                 if (!hex_decode(optarg, g_backup_key, &g_backup_key_len) || g_backup_key_len != 32)

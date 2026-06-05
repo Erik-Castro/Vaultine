@@ -1,13 +1,15 @@
 # AGENTS.md — Vaultine
 
-**Projeto:** Biblioteca dinâmica C++ (.so) POSIX para gerenciamento criptográfico de segredos multi-tenant. v0.3.1-beta.
+**Projeto:** Biblioteca dinâmica C++ (.so) POSIX para gerenciamento criptográfico de segredos multi-tenant. v0.3.2-beta.
 
 ## Convenções
 
 - C++17, extensões `.cc`/`.h`, namespace `ssm::v1`
 - API pública em `include/ssm/ssm.h` (C-compatible `extern "C"`). Headers privados em `src/` ao lado do `.cc`.
 - Padrão de erro: `do { ... } while(false)` com `break` no primeiro fallo — sem exceções.
-- Wiping: `sodium_memzero` via `secure_erase()`. `secure_alloc()` faz `malloc + mlock`.
+- Wiping: `sodium_memzero` via `secure_erase()`. `secure_alloc()` faz `malloc + mlock`. `secure_vector` também usa `secure_alloc`.
+- `secure_string` (RAII) para globals de senha — faz `sodium_memzero` no destructor.
+- Username validation: `is_valid_username()` verifica `strlen <= SSM_USERNAME_MAX` (255) em todas APIs.
 - `SSM_EXPORT` controla visibilidade de símbolos; `SSM_VISIBILITY_HIDDEN=ON` em Release.
 
 ## Comandos
@@ -76,9 +78,11 @@ ssm-cli env exec <username> <cmd> [args...]  # injeta SSM_<NAME> como env vars
 ssm-cli tui                                  # ncurses interativo
 ssm-cli completion [bash|zsh]                # gera script de autocomplete
 ```
-Opções: `--db <path>` (default `./ssm.db`), `--db-key <hex>`, `--password <str>`, `--backup-key <hex64>`, `--json`.
+Opções: `--db <path>` (default `./ssm.db`), `--db-key <hex>`, `--password <str>`, `--backup-key <hex64>`, `--api-key <str>`, `--json`.
+Environment vars (substituem config, sobrescritas por flags): `SSM_PASSWORD`, `SSM_DB_KEY`, `SSM_BACKUP_KEY`, `SSM_API_KEY`.
 
 ## Config File
 
 `ssm-cli` carrega `./vaultine.json` ou `~/.vaultinerc` (JSON). Flags CLI sobrescrevem.
 Chaves: `db`, `db_key`, `password`, `backup_key`, `json`. Usar statics `g_cfg_*` para persistência.
+Environment vars (substituem config, sobrescritas por flags): `SSM_PASSWORD`, `SSM_DB_KEY`, `SSM_BACKUP_KEY`, `SSM_API_KEY`.

@@ -20,6 +20,7 @@
 #include <unistd.h>
 
 #define HTTP_CREATED 201
+#define HTTP_UNAUTHORIZED 401
 
 #include "hex_utils.h"
 #include "ssm/ssm.h"
@@ -32,6 +33,8 @@ static const char* g_prog = "ssm-cli";
 extern const char* g_db_path;
 extern unsigned char g_db_key[32];
 extern size_t g_db_key_len;
+
+static std::string g_api_key;
 
 static struct event_base* g_base = nullptr;
 static struct evhttp* g_http = nullptr;
@@ -603,6 +606,13 @@ static void handle_export_req(struct evhttp_request* req) {
 // -------------------------------------------------------------------
 // Main dispatch
 // -------------------------------------------------------------------
+static bool check_api_key(struct evhttp_request* req) {
+    if (g_api_key.empty())
+        return true;
+    const char* key = evhttp_find_header(evhttp_request_get_input_headers(req), "X-API-Key");
+    return key && g_api_key == key;
+}
+
 static void request_handler(struct evhttp_request* req, void*) {
     const char* uri = evhttp_request_get_uri(req);
     enum evhttp_cmd_type method = evhttp_request_get_command(req);
@@ -619,6 +629,12 @@ static void request_handler(struct evhttp_request* req, void*) {
     }
     if (path_only == "/v1/version" && method == EVHTTP_REQ_GET) {
         handle_version(req);
+        return;
+    }
+
+    // Auth check for all other endpoints
+    if (!check_api_key(req)) {
+        reply_error(req, HTTP_UNAUTHORIZED, "missing or invalid API key");
         return;
     }
 
@@ -799,11 +815,17 @@ int handle_server_start(int argc, char** argv) {
     bool do_daemonize = false;
     const char* pidfile = "./ssm-cli.pid";
 
+    const char* env_key = std::getenv("SSM_API_KEY");
+    if (env_key)
+        g_api_key = env_key;
+
     for (int i = 0; i < argc; ++i) {
         if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc)
             port = std::atoi(argv[++i]);
         else if (std::strcmp(argv[i], "--host") == 0 && i + 1 < argc)
             host = argv[++i];
+        else if (std::strcmp(argv[i], "--api-key") == 0 && i + 1 < argc)
+            g_api_key = argv[++i];
         else if (std::strcmp(argv[i], "--daemonize") == 0)
             do_daemonize = true;
         else if (std::strcmp(argv[i], "--pidfile") == 0 && i + 1 < argc)

@@ -2,6 +2,8 @@
 
 #include <sodium.h>
 
+#include <unistd.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -211,8 +213,17 @@ void ssm_set_password_validator(ssm_password_validator validator, void* user_dat
     g_validator_user_data = validator ? user_data : nullptr;
 }
 
+static bool is_valid_username(const char* username) {
+    if (!username || username[0] == '\0')
+        return false;
+    size_t len = std::strlen(username);
+    return len <= SSM_USERNAME_MAX;
+}
+
 ssm_status ssm_user_register(ssm_handle* h, const char* username, const char* password) {
     if (!h || !username || !password)
+        return SSM_ERR_INTERNAL;
+    if (!is_valid_username(username))
         return SSM_ERR_INTERNAL;
 
     ssm_status pw_status = g_validator(password, g_validator_user_data);
@@ -260,6 +271,8 @@ ssm_status ssm_user_register(ssm_handle* h, const char* username, const char* pa
 ssm_status ssm_user_authenticate(ssm_handle* h, const char* username, const char* password,
                                  int* is_valid) {
     if (!h || !username || !password || !is_valid)
+        return SSM_ERR_INTERNAL;
+    if (!is_valid_username(username))
         return SSM_ERR_INTERNAL;
 
     std::unique_lock lock(h->mutex);
@@ -527,6 +540,8 @@ ssm_status ssm_audit_log_query(ssm_handle* h, const char* username, const char* 
 ssm_status ssm_user_delete(ssm_handle* h, const char* username, const char* password) {
     if (!h || !username || !password)
         return SSM_ERR_INTERNAL;
+    if (!is_valid_username(username))
+        return SSM_ERR_INTERNAL;
 
     std::unique_lock lock(h->mutex);
 
@@ -555,6 +570,8 @@ ssm_status ssm_user_delete(ssm_handle* h, const char* username, const char* pass
 ssm_status ssm_user_change_password(ssm_handle* h, const char* username, const char* old_password,
                                     const char* new_password) {
     if (!h || !username || !old_password || !new_password)
+        return SSM_ERR_INTERNAL;
+    if (!is_valid_username(username))
         return SSM_ERR_INTERNAL;
 
     ssm_status pw_status = g_validator(new_password, g_validator_user_data);
@@ -726,15 +743,18 @@ ssm_status ssm_backup_restore(ssm_handle* h, const char* backup_path,
     {
         const char* base = std::strrchr(h->db_path, '/');
         base = base ? base + 1 : h->db_path;
-        const char* dir = h->db_path;
         auto slash = std::strrchr(h->db_path, '/');
         if (slash) {
             size_t dirlen = static_cast<size_t>(slash - h->db_path + 1);
             std::memcpy(tmp_buf, h->db_path, dirlen);
-            std::snprintf(tmp_buf + dirlen, sizeof(tmp_buf) - dirlen, ".%s.tmp", base);
+            std::snprintf(tmp_buf + dirlen, sizeof(tmp_buf) - dirlen, ".%s.XXXXXX", base);
         } else {
-            std::snprintf(tmp_buf, sizeof(tmp_buf), ".%s.tmp", base);
+            std::snprintf(tmp_buf, sizeof(tmp_buf), ".%s.XXXXXX", base);
         }
+        int fd = mkstemp(tmp_buf);
+        if (fd == -1)
+            return SSM_ERR_INTERNAL;
+        close(fd);
         tmp_path = tmp_buf;
     }
 

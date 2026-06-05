@@ -5,10 +5,13 @@
 
 namespace ssm::v1 {
 
-const std::array<Migration, 1> migrations = {{
+const std::array<Migration, 2> migrations = {{
     {1, 2,
      "CREATE INDEX IF NOT EXISTS idx_secrets_user_id ON secrets(user_id);",
      "DROP INDEX IF EXISTS idx_secrets_user_id;"},
+    {2, 3,
+     "CREATE UNIQUE INDEX IF NOT EXISTS idx_secrets_unique_name ON secrets(user_id, name);",
+     "DROP INDEX IF EXISTS idx_secrets_unique_name;"},
 }};
 
 int db_get_version(sqlite3* db) {

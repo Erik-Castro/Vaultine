@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.3.1--beta-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.2--beta-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=c%2B%2B" alt="C++17">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/platform-linux%20%7C%20macOS-lightgrey?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="Build">
   <img src="https://img.shields.io/badge/tests-182%20passing-brightgreen?style=flat-square" alt="Tests">
   <img src="https://img.shields.io/badge/coverage-82%25-yellow?style=flat-square" alt="Coverage">
-  <img src="https://img.shields.io/badge/security-audit%20pending-orange?style=flat-square" alt="Security">
+  <img src="https://img.shields.io/badge/security-audit%20passing-brightgreen?style=flat-square" alt="Security">
 </p>
 
 Biblioteca dinâmica C++ (.so) POSIX para gerenciamento criptográfico de segredos multi-tenant com SQLCipher.
@@ -296,6 +296,21 @@ OK: user 'alice' registered
 $ ssm-cli --db ./other.db ...      # flag CLI sobrescreve config
 ```
 
+## Environment Variables
+
+As seguintes variáveis de ambiente podem substituir valores do config file e são sobrescritas por flags CLI. Preferíveis a `--password`/`--db-key`/`--backup-key` na linha de comando pois **não aparecem em `ps`**.
+
+| Variável | Valor esperado | Descrição |
+|----------|---------------|-----------|
+| `SSM_PASSWORD` | string | Senha para autenticação do usuário |
+| `SSM_DB_KEY` | hex (até 64 chars) | Chave de criptografia do SQLCipher |
+| `SSM_BACKUP_KEY` | hex (64 chars) | Chave de 32 bytes para backup/restore |
+| `SSM_API_KEY` | string | API key para REST server |
+
+**Ordem de precedência:** CLI flags > Env vars > Config file
+
+---
+
 ## Shell Completion
 
 O `ssm-cli` suporta autocomplete para **bash** e **zsh**:
@@ -324,8 +339,11 @@ Scripts prontos também em [`scripts/completion/`](scripts/completion/).
 
 O Vaultine inclui um servidor HTTP REST via `ssm-cli server start`, implementado com libevent evhttp + jsoncpp. Todas as respostas são JSON com `Content-Type: application/json`.
 
+Autenticação via **`X-API-Key`** header. Configure com `--api-key` flag ou `SSM_API_KEY` env var. Se nenhuma key for configurada, o servidor aceita todas as requisições (compatibilidade com versões anteriores).
+
 ```bash
-ssm-cli server start                    # localhost:8080
+ssm-cli server start                    # localhost:8080, sem auth
+ssm-cli server start --api-key "tok3n"  # exige X-API-Key: tok3n
 ssm-cli server start --port 9090        # porta customizada
 ssm-cli server start --host 0.0.0.0     # todas as interfaces
 ssm-cli server start --daemonize        # background
@@ -358,21 +376,24 @@ ssm-cli server start --daemonize --pidfile /run/ssm-cli.pid
 ### Exemplo
 
 ```bash
-# Iniciar servidor
-ssm-cli server start --port 8080 &
+# Iniciar servidor com API key
+ssm-cli server start --port 8080 --api-key "tok3n" &
 
 # Registrar usuário
 curl -s -X POST -H "Content-Type: application/json" \
+  -H "X-API-Key: tok3n" \
   -d '{"password":"minha-senha"}' \
   http://127.0.0.1:8080/v1/users/alice/register
 
 # Armazenar segredo
 curl -s -X POST -H "Content-Type: application/json" \
+  -H "X-API-Key: tok3n" \
   -d '{"name":"minha-chave","private_key":"deadbeef01020304"}' \
   http://127.0.0.1:8080/v1/users/alice/secrets
 
 # Recuperar segredo
-curl -s http://127.0.0.1:8080/v1/users/alice/secrets/minha-chave
+curl -s -H "X-API-Key: tok3n" \
+  http://127.0.0.1:8080/v1/users/alice/secrets/minha-chave
 ```
 
 ### Parâmetros de Query (Audit/Export)

@@ -111,7 +111,7 @@ public:
     explicit secure_vector(size_type count)
         : data_(count > static_cast<size_type>(-1) / sizeof(T)
                     ? nullptr
-                    : static_cast<pointer>(::operator new[](count * sizeof(T)))),
+                    : static_cast<pointer>(secure_alloc(count * sizeof(T)))),
           size_(data_ ? count : 0) {
         if (!data_)
             return;
@@ -158,7 +158,7 @@ public:
             return;
         if (new_size > static_cast<size_type>(-1) / sizeof(T))
             return;
-        auto* new_data = static_cast<pointer>(::operator new[](new_size * sizeof(T)));
+        auto* new_data = static_cast<pointer>(secure_alloc(new_size * sizeof(T)));
         auto copy_size = std::min(size_, new_size);
         for (size_type i = 0; i < copy_size; ++i)
             ::new (new_data + i) T(data_[i]);
@@ -174,7 +174,7 @@ public:
             for (size_type i = 0; i < size_; ++i)
                 data_[i].~T();
             secure_erase(data_, size_ * sizeof(T));
-            ::operator delete[](data_);
+            secure_free(data_, size_ * sizeof(T));
             data_ = nullptr;
             size_ = 0;
         }
