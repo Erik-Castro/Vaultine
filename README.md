@@ -241,6 +241,7 @@ ssm-cli --help
 | `audit-log <username>` | Consulta log de auditoria |
 | `env exec <username> <cmd>` | Injeta segredos como env vars |
 | `tui` | Interface ncurses interativa |
+| `completion [bash\|zsh]` | Gera script de autocomplete para o shell |
 
 ```bash
 ssm-cli tui                     # inicia a interface
@@ -249,6 +250,75 @@ ssm-cli backup create vaultine.bak --backup-key <hex64>
 ssm-cli export --format json --redact-pii
 ssm-cli db version
 ```
+
+## Config File
+
+O `ssm-cli` carrega automaticamente um arquivo de configuração JSON na inicialização.
+As flags CLI têm precedência sobre valores do config.
+
+### Arquivos (primeiro encontrado vence)
+
+| Caminho | Descrição |
+|---------|-----------|
+| `./vaultine.json` | Config por projeto (junto ao banco de dados) |
+| `~/.vaultinerc` | Config global do usuário |
+
+### Formato
+
+```json
+{
+    "db": "./ssm.db",
+    "db_key": "0123456789abcdef...",
+    "password": "minha-senha",
+    "backup_key": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "json": false
+}
+```
+
+| Chave | Tipo | Descrição |
+|-------|------|-----------|
+| `db` | string | Caminho do SQLite (default: `./ssm.db`) |
+| `db_key` | string | Chave hex SQLCipher (opcional) |
+| `password` | string | Senha para todas operações |
+| `backup_key` | string | Chave hex 64 chars para backup/restore |
+| `json` | bool | Habilita saída JSON (default: false) |
+
+### Exemplo
+
+```bash
+# ssm-cli usa ./vaultine.json automaticamente
+$ cat vaultine.json
+{"db": "./vaultine.db", "password": "admin123"}
+
+$ ssm-cli user register alice      # usa db + password do config
+OK: user 'alice' registered
+
+$ ssm-cli --db ./other.db ...      # flag CLI sobrescreve config
+```
+
+## Shell Completion
+
+O `ssm-cli` suporta autocomplete para **bash** e **zsh**:
+
+```bash
+# Bash — adicione ao ~/.bashrc
+source <(ssm-cli completion bash)
+
+# Zsh — adicione ao ~/.zshrc
+source <(ssm-cli completion zsh)
+```
+
+Ou copie o script permanente:
+
+```bash
+# Bash
+ssm-cli completion bash > /etc/bash_completion.d/ssm-cli
+
+# Zsh
+ssm-cli completion zsh > /usr/local/share/zsh/site-functions/_ssm-cli
+```
+
+Scripts prontos também em [`scripts/completion/`](scripts/completion/).
 
 ## REST API Server
 

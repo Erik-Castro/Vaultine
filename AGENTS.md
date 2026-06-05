@@ -74,5 +74,11 @@ ssm-cli kek rotate <username>
 ssm-cli cache-stats
 ssm-cli env exec <username> <cmd> [args...]  # injeta SSM_<NAME> como env vars
 ssm-cli tui                                  # ncurses interativo
+ssm-cli completion [bash|zsh]                # gera script de autocomplete
 ```
-Opções: `--db <path>` (default `./ssm.db`), `--db-key <hex>`, `--password <str>`, `--json`.
+Opções: `--db <path>` (default `./ssm.db`), `--db-key <hex>`, `--password <str>`, `--backup-key <hex64>`, `--json`.
+
+## Config File
+
+`ssm-cli` carrega `./vaultine.json` ou `~/.vaultinerc` (JSON). Flags CLI sobrescrevem.
+Chaves: `db`, `db_key`, `password`, `backup_key`, `json`. Usar statics `g_cfg_*` para persistência.

@@ -1,4 +1,5 @@
 #include <getopt.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -6,8 +7,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <string>
 #include <vector>
+
+#include <json/json.h>
 
 #include <sodium.h>
 
@@ -26,6 +30,63 @@ static unsigned char g_backup_key[32];
 static size_t g_backup_key_len = 0;
 static bool g_json = false;
 static std::string g_password;
+
+// -------------------------------------------------------------------
+// Config file
+// -------------------------------------------------------------------
+static std::string g_cfg_db_path;
+static std::string g_cfg_password;
+static std::string g_cfg_db_key_hex;
+static std::string g_cfg_backup_key_hex;
+
+struct ConfigFile {
+    bool json = false;
+    bool loaded = false;
+};
+
+static ConfigFile load_config() {
+    ConfigFile cf;
+    const char* paths[] = {"./vaultine.json", nullptr};
+
+    const char* home = std::getenv("HOME");
+    std::string homepath;
+    if (home) {
+        homepath = std::string(home) + "/.vaultinerc";
+        paths[1] = homepath.c_str();
+    }
+
+    for (const char* path : paths) {
+        if (!path)
+            continue;
+        struct stat st;
+        if (stat(path, &st) != 0)
+            continue;
+
+        std::ifstream ifs(path);
+        if (!ifs.is_open())
+            continue;
+
+        Json::Value root;
+        Json::CharReaderBuilder builder;
+        std::string errors;
+        if (!Json::parseFromStream(builder, ifs, &root, &errors))
+            continue;
+
+        cf.loaded = true;
+        if (root.isMember("db") && root["db"].isString())
+            g_cfg_db_path = root["db"].asString();
+        if (root.isMember("db_key") && root["db_key"].isString())
+            g_cfg_db_key_hex = root["db_key"].asString();
+        if (root.isMember("password") && root["password"].isString())
+            g_cfg_password = root["password"].asString();
+        if (root.isMember("backup_key") && root["backup_key"].isString())
+            g_cfg_backup_key_hex = root["backup_key"].asString();
+        if (root.isMember("json") && root["json"].isBool())
+            cf.json = root["json"].asBool();
+        break;
+    }
+    return cf;
+}
 
 // -------------------------------------------------------------------
 // Helpers
@@ -112,7 +173,11 @@ static void print_usage() {
         "  env exec <username> [--] <command> [args...]\n"
         "  server start [--port <n>] [--host <addr>] [--daemonize]\n"
         "              [--pidfile <path>]\n"
-        "  help [command]\n",
+        "  completion [bash|zsh]  Generate shell completion script\n"
+        "  help [command]\n"
+        "\n"
+        "Config file (auto-detected):\n"
+        "  ./vaultine.json or ~/.vaultinerc  JSON config (CLI flags override)\n",
         g_prog);
 }
 
@@ -1035,6 +1100,23 @@ int main(int argc, char** argv) {
         {nullptr, 0, nullptr, 0},
     };
 
+    // Load config file before arg parsing (CLI flags override)
+    ConfigFile cf = load_config();
+    if (!g_cfg_db_path.empty())
+        g_db_path = g_cfg_db_path.c_str();
+    if (!g_cfg_db_key_hex.empty()) {
+        if (!hex_decode(g_cfg_db_key_hex.c_str(), g_db_key, &g_db_key_len))
+            die("invalid db_key in config file");
+    }
+    if (!g_cfg_password.empty())
+        g_password = g_cfg_password;
+    if (!g_cfg_backup_key_hex.empty()) {
+        if (!hex_decode(g_cfg_backup_key_hex.c_str(), g_backup_key, &g_backup_key_len) || g_backup_key_len != 32)
+            die("invalid backup_key in config file (must be 64 hex chars)");
+    }
+    if (cf.json)
+        g_json = true;
+
     int opt;
     while ((opt = getopt_long(argc, argv, "+h", long_opts, nullptr)) != -1) {
         switch (opt) {
@@ -1110,6 +1192,73 @@ int main(int argc, char** argv) {
         return dispatch(backup_cmds, remaining, cmd_argv);
     if (std::strcmp(cmd, "env") == 0)
         return dispatch(env_cmds, remaining, cmd_argv);
+    if (std::strcmp(cmd, "completion") == 0) {
+        const char* shell = (remaining >= 1) ? cmd_argv[0] : "bash";
+        if (std::strcmp(shell, "bash") == 0) {
+            printf("_ssm_cli_completions()\n");
+            printf("{\n");
+            printf("    local cur prev words cword\n");
+            printf("    _init_completion || return\n");
+            printf("\n");
+            printf("    local commands=\"user secret kek cache-stats audit-log backup db export tui env server help\"\n");
+            printf("    local user_sub=\"register auth delete change-password\"\n");
+            printf("    local secret_sub=\"store get delete list\"\n");
+            printf("    local backup_sub=\"create restore\"\n");
+            printf("    local db_sub=\"version migrate\"\n");
+            printf("    local env_sub=\"exec\"\n");
+            printf("    local server_sub=\"start\"\n");
+            printf("\n");
+            printf("    if [[ $cword -eq 1 ]]; then\n");
+            printf("        COMPREPLY=($(compgen -W \"$commands\" -- \"$cur\"))\n");
+            printf("        return\n");
+            printf("    fi\n");
+            printf("    case $prev in\n");
+            printf("        --db|--db-key|--password|--backup-key) return ;;\n");
+            printf("        --format) COMPREPLY=($(compgen -W \"json csv\" -- \"$cur\")); return ;;\n");
+            printf("    esac\n");
+            printf("    case ${words[1]} in\n");
+            printf("        user) [[ $cword -eq 2 ]] && COMPREPLY=($(compgen -W \"$user_sub\" -- \"$cur\")) ;;\n");
+            printf("        secret) [[ $cword -eq 2 ]] && COMPREPLY=($(compgen -W \"$secret_sub\" -- \"$cur\")) ;;\n");
+            printf("        kek) [[ $cword -eq 2 ]] && COMPREPLY=($(compgen -W rotate -- \"$cur\")) ;;\n");
+            printf("        backup) [[ $cword -eq 2 ]] && COMPREPLY=($(compgen -W \"$backup_sub\" -- \"$cur\")); [[ $cword -eq 3 ]] && COMPREPLY=($(compgen -f -- \"$cur\")) ;;\n");
+            printf("        db) [[ $cword -eq 2 ]] && COMPREPLY=($(compgen -W \"$db_sub\" -- \"$cur\")) ;;\n");
+            printf("        env) [[ $cword -eq 2 ]] && COMPREPLY=($(compgen -W \"$env_sub\" -- \"$cur\")) ;;\n");
+            printf("        server) [[ $cword -eq 2 ]] && COMPREPLY=($(compgen -W \"$server_sub\" -- \"$cur\")) ;;\n");
+            printf("    esac\n");
+            printf("}\n");
+            printf("complete -F _ssm_cli_completions ssm-cli\n");
+        } else if (std::strcmp(shell, "zsh") == 0) {
+            printf("#compdef ssm-cli\n");
+            printf("_ssm_cli() {\n");
+            printf("    _arguments -C \\\n");
+            printf("        '--db[DB path]:file:_files' \\\n");
+            printf("        '--db-key[DB hex key]' \\\n");
+            printf("        '--password[Password]' \\\n");
+            printf("        '--backup-key[64 hex chars]' \\\n");
+            printf("        '--json[JSON output]' \\\n");
+            printf("        '--help' '--version' \\\n");
+            printf("        '1: :(user secret kek cache-stats audit-log backup db export tui env server help)' \\\n");
+            printf("        '*::arg:->args'\n");
+            printf("    case $state in\n");
+            printf("        args)\n");
+            printf("            case $words[1] in\n");
+            printf("                user) _describe 'user' '((register:Register auth:Authenticate delete:Delete change-password:Change\\ password))' ;;\n");
+            printf("                secret) _describe 'secret' '((store:Store get:Get delete:Delete list:List))' ;;\n");
+            printf("                kek) _values 'kek' rotate ;;\n");
+            printf("                backup) _describe 'backup' '((create:Create restore:Restore))' ;;\n");
+            printf("                db) _values 'db' version migrate ;;\n");
+            printf("                env) _values 'env' exec ;;\n");
+            printf("                server) _values 'server' start ;;\n");
+            printf("            esac ;;\n");
+            printf("    esac\n");
+            printf("}\n");
+            printf("_ssm_cli\n");
+        } else {
+            fprintf(stderr, "unknown shell '%s'. Try 'bash' or 'zsh'\n", shell);
+            return 1;
+        }
+        return 0;
+    }
     if (std::strcmp(cmd, "tui") == 0)
         return handle_tui(remaining, cmd_argv);
     if (std::strcmp(cmd, "server") == 0)

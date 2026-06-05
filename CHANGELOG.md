@@ -51,6 +51,13 @@ e este projeto segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **PCH**: `<shared_mutex>` adicionado ao precompiled header
 - **Backup format breaking**: `timestamp` uint32→uint64, `BACKUP_VERSION` 1→2
 
+### 🎉 Novo
+
+- **Config file JSON**: `ssm-cli` lê `./vaultine.json` ou `~/.vaultinerc` automaticamente, suporta `db`, `db_key`, `password`, `backup_key`, `json`. Flags CLI sobrescrevem config.
+- **Tab completion**: `ssm-cli completion [bash|zsh]` gera scripts de autocomplete. Scripts prontos em `scripts/completion/` para source direto.
+- **CI reativado**: `.github/workflows/ci.yml` restaurado (estava `.bak`).
+- **#pragma once**: `cli/ssm_server.h` convertido de `#ifndef` guard para `#pragma once`.
+
 ### ⚠️ Nota de Breaking Change
 - **Backup v1 incompatível**: backups criados com v0.3.0-beta ou anterior não podem ser restaurados nesta versão. Use v0.3.0-beta para restaurar backups antigos antes de atualizar.
 

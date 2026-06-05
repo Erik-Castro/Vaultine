@@ -1,6 +1,3 @@
-#ifndef SSM_SERVER_H
-#define SSM_SERVER_H
+#pragma once
 
 int handle_server_start(int argc, char** argv);
-
-#endif
