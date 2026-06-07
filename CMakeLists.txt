@@ -23,15 +23,19 @@ include(FetchContent)
 # Sanitizer support (ASan + UBSan)
 include(cmake/Sanitizer.cmake)
 
-FetchContent_Declare(
-    googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG v1.15.2
-)
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
-
+option(SSM_BUILD_TESTS "Build tests" ON)
 option(SSM_BUILD_BENCHMARKS "Build benchmark suite" OFF)
+
+if(SSM_BUILD_TESTS OR SSM_BUILD_BENCHMARKS)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG v1.15.2
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+endif()
+
 if(SSM_BUILD_BENCHMARKS)
     find_package(Threads REQUIRED)
     FetchContent_Declare(
@@ -47,7 +51,6 @@ endif()
 add_subdirectory(src)
 add_subdirectory(cli)
 
-option(SSM_BUILD_TESTS "Build tests" ON)
 if(SSM_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
