@@ -8,7 +8,7 @@
 namespace ssm::v1 {
 
 // Current schema version
-constexpr int SSM_SCHEMA_VERSION = 3;
+constexpr int SSM_SCHEMA_VERSION = 4;
 
 // Get current schema version from DB (PRAGMA user_version)
 int db_get_version(sqlite3* db);
@@ -30,6 +30,6 @@ struct Migration {
     const char* rollback_sql;  // null = irreversible
 };
 
-extern const std::array<Migration, 2> migrations;
+extern const std::array<Migration, 3> migrations;
 
 }  // namespace ssm::v1

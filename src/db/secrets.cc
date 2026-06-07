@@ -33,6 +33,8 @@ static bool read_secret_row(sqlite3_stmt* stmt, secret_row* out) {
     auto* ua = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8));
     out->updated_at = ua ? ua : "";
 
+    out->kek_version = sqlite3_column_int64(stmt, 9);
+
     return true;
 }
 
@@ -95,7 +97,7 @@ bool secrets_find(sqlite3* db, int64_t user_id, const char* name, secret_row* ou
 
     const char* sql =
         "SELECT id, user_id, name, private_key, public_key, nonce, tag, "
-        "       description, updated_at "
+        "       description, updated_at, kek_version "
         "FROM secrets WHERE user_id = ? AND name = ?";
 
     sqlite3_stmt* stmt = nullptr;
@@ -151,7 +153,7 @@ bool secrets_list_for_user(sqlite3* db, int64_t user_id, std::vector<secret_row>
 
     const char* sql =
         "SELECT id, user_id, name, private_key, public_key, nonce, tag, "
-        "       description, updated_at "
+        "       description, updated_at, kek_version "
         "FROM secrets WHERE user_id = ? "
         "ORDER BY updated_at DESC";
 
@@ -173,6 +175,78 @@ bool secrets_list_for_user(sqlite3* db, int64_t user_id, std::vector<secret_row>
         }
 
         ok = true;
+    } while (false);
+
+    sqlite3_finalize(stmt);
+    return ok;
+}
+
+bool secrets_count_by_kek_version(sqlite3* db, int64_t user_id, int64_t kek_version,
+                                  int64_t* count) {
+    if (!db || !count)
+        return false;
+
+    const char* sql = "SELECT COUNT(*) FROM secrets WHERE user_id = ? AND kek_version = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return false;
+
+    bool ok = false;
+
+    do {
+        sqlite3_bind_int64(stmt, 1, user_id);
+        sqlite3_bind_int64(stmt, 2, kek_version);
+
+        if (sqlite3_step(stmt) != SQLITE_ROW)
+            break;
+
+        *count = sqlite3_column_int64(stmt, 0);
+        ok = true;
+    } while (false);
+
+    sqlite3_finalize(stmt);
+    return ok;
+}
+
+bool secrets_update_ciphertext(sqlite3* db, int64_t secret_id,
+                               const unsigned char* private_key, size_t private_key_len,
+                               const unsigned char* nonce, size_t nonce_len,
+                               const unsigned char* tag, size_t tag_len,
+                               int64_t kek_version) {
+    if (!db || !private_key || !nonce || !tag)
+        return false;
+
+    const char* sql =
+        "UPDATE secrets SET private_key = ?, nonce = ?, tag = ?, kek_version = ?, "
+        "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return false;
+
+    bool ok = false;
+
+    do {
+        if (sqlite3_bind_blob(stmt, 1, private_key, static_cast<int>(private_key_len),
+                               SQLITE_TRANSIENT) != SQLITE_OK)
+            break;
+
+        if (sqlite3_bind_blob(stmt, 2, nonce, static_cast<int>(nonce_len),
+                               SQLITE_TRANSIENT) != SQLITE_OK)
+            break;
+
+        if (sqlite3_bind_blob(stmt, 3, tag, static_cast<int>(tag_len),
+                               SQLITE_TRANSIENT) != SQLITE_OK)
+            break;
+
+        sqlite3_bind_int64(stmt, 4, kek_version);
+        sqlite3_bind_int64(stmt, 5, secret_id);
+
+        if (sqlite3_step(stmt) != SQLITE_DONE)
+            break;
+
+        ok = sqlite3_changes(db) > 0;
     } while (false);
 
     sqlite3_finalize(stmt);

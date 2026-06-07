@@ -108,6 +108,17 @@ bool db_create_schema(sqlite3* db) {
         "  details TEXT,"
         "  result TEXT NOT NULL,"
         "  timestamp TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))"
+        ");"
+
+        "CREATE TABLE IF NOT EXISTS kek_archive ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+        "  kek_version INTEGER NOT NULL,"
+        "  wrapped_kek BLOB NOT NULL,"
+        "  salt BLOB NOT NULL,"
+        "  expires_at TEXT NOT NULL,"
+        "  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+        "  UNIQUE(user_id, kek_version)"
         ");";
 
     char* err = nullptr;

@@ -5,13 +5,27 @@
 
 namespace ssm::v1 {
 
-const std::array<Migration, 2> migrations = {{
+const std::array<Migration, 3> migrations = {{
     {1, 2,
      "CREATE INDEX IF NOT EXISTS idx_secrets_user_id ON secrets(user_id);",
      "DROP INDEX IF EXISTS idx_secrets_user_id;"},
     {2, 3,
      "CREATE UNIQUE INDEX IF NOT EXISTS idx_secrets_unique_name ON secrets(user_id, name);",
      "DROP INDEX IF EXISTS idx_secrets_unique_name;"},
+    {3, 4,
+     "CREATE TABLE IF NOT EXISTS kek_archive ("
+     "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+     "  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+     "  kek_version INTEGER NOT NULL,"
+     "  wrapped_kek BLOB NOT NULL,"
+     "  salt BLOB NOT NULL,"
+     "  expires_at TEXT NOT NULL,"
+     "  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),"
+     "  UNIQUE(user_id, kek_version)"
+     ");"
+     "ALTER TABLE secrets ADD COLUMN kek_version INTEGER NOT NULL DEFAULT 1;",
+     "DROP TABLE IF EXISTS kek_archive;"
+     "ALTER TABLE secrets DROP COLUMN kek_version;"},
 }};
 
 int db_get_version(sqlite3* db) {
