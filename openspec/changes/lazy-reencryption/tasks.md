@@ -9,11 +9,11 @@
 | Chained PRs recommended | Yes |
 | Suggested split | PR 1 (Foundation) → PR 2 (Core + Tests) |
 | Delivery strategy | ask-on-risk |
-| Chain strategy | pending |
+| Chain strategy | feature-branch-chain |
 
 Decision needed before apply: Yes
 Chained PRs recommended: Yes
-Chain strategy: pending
+Chain strategy: feature-branch-chain
 400-line budget risk: High
 
 ### Suggested Work Units
@@ -25,16 +25,16 @@ Chain strategy: pending
 
 ## Phase 1: Foundation
 
-- [ ] 1.1 (RED) Test `kek_archive_store/find_by_version/delete_version/list_for_user` round-trips
-- [ ] 1.2 (RED) Test migration v2→v3 forward + rollback
-- [ ] 1.3 (GREEN) Create `src/db/kek_archive.h` — `kek_archive_row` struct + CRUD declarations
-- [ ] 1.4 (GREEN) Create `src/db/kek_archive.cc` — all 4 CRUD implementations
-- [ ] 1.5 (GREEN) Add `int64_t kek_version` to `secret_row` in `src/db/secrets.h`
-- [ ] 1.6 (GREEN) Add `secrets_count_by_kek_version()` + `secrets_update_ciphertext()` in `src/db/secrets.cc`
-- [ ] 1.7 (GREEN) Add `kek_archive` CREATE TABLE to `src/db/database.cc` schema
-- [ ] 1.8 (GREEN) Bump `SSM_SCHEMA_VERSION` to 3 in `src/db/migrations.h`
-- [ ] 1.9 (GREEN) Append v2→v3 migration in `src/db/migrations.cc` (CREATE kek_archive + ALTER secrets ADD COLUMN, rollback DROP)
-- [ ] 1.10 (GREEN) All CRUD + migration tests pass
+- [x] 1.1 (RED) Test `kek_archive_store/find_by_version/delete_version/list_for_user` round-trips
+- [x] 1.2 (RED) Test migration v3→v4 forward + rollback
+- [x] 1.3 (GREEN) Create `src/db/kek_archive.h` — `kek_archive_row` struct + CRUD declarations
+- [x] 1.4 (GREEN) Create `src/db/kek_archive.cc` — all 4 CRUD implementations
+- [x] 1.5 (GREEN) Add `int64_t kek_version` to `secret_row` in `src/db/secrets.h`
+- [x] 1.6 (GREEN) Add `secrets_count_by_kek_version()` + `secrets_update_ciphertext()` in `src/db/secrets.cc`
+- [x] 1.7 (GREEN) Add `kek_archive` CREATE TABLE to `src/db/database.cc` schema
+- [x] 1.8 (GREEN) Bump `SSM_SCHEMA_VERSION` to 4 in `src/db/migrations.h`
+- [x] 1.9 (GREEN) Append v3→v4 migration in `src/db/migrations.cc` (CREATE kek_archive + ALTER secrets ADD COLUMN, rollback DROP)
+- [x] 1.10 (GREEN) All CRUD + migration tests pass
 
 ## Phase 2: Core Logic
 

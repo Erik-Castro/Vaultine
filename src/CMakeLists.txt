@@ -10,6 +10,7 @@ add_library(ssm SHARED
     db/users.cc
     db/kek_metadata.cc
     db/secrets.cc
+    db/kek_archive.cc
     db/audit_log.cc
     kek/kek.cc
     backup/backup.cc
