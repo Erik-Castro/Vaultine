@@ -12,6 +12,7 @@ add_executable(ssm_test
     db/secrets_test.cc
     db/kek_archive_test.cc
     kek/kek_test.cc
+    lazy_reencryption_test.cc
     ssm_test.cc
     integration/lifecycle_test.cc
     backup_test.cc

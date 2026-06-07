@@ -65,6 +65,7 @@ SSM_EXPORT ssm_status ssm_secret_list(ssm_handle* h, const char* username,
                                       ssm_secret_list_cb callback, void* user_data);
 
 SSM_EXPORT ssm_status ssm_kek_rotate(ssm_handle* h, const char* username);
+SSM_EXPORT ssm_status ssm_kek_purge_archive(ssm_handle* h, const char* username);
 
 typedef struct {
     size_t total_entries;

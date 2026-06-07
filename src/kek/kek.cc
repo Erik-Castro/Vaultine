@@ -8,8 +8,8 @@
 #include "crypto/aes_gcm.h"
 #include "crypto/aes_kw.h"
 #include "crypto/random.h"
+#include "db/kek_archive.h"
 #include "db/kek_metadata.h"
-#include "db/secrets.h"
 #include "utils/secure_memory.h"
 
 namespace ssm::v1 {
@@ -128,127 +128,44 @@ bool kek_expires_at(int days, char* out, size_t out_size) {
     return true;
 }
 
+// O(1) KEK rotation: archive current KEK → generate new → update kek_metadata
+// No secrets loop — secrets are lazy-migrated on read.
 bool kek_rotate(sqlite3* db, int64_t user_id, const unsigned char* auth_hash,
                 size_t auth_hash_len) {
     if (!db || !auth_hash)
         return false;
 
-    secure_buffer<unsigned char> wrapping_key(KEK_KEY_LEN);
-    secure_buffer<unsigned char> new_kek(KEK_KEY_LEN);
-    secure_buffer<unsigned char> new_wrapping_key(KEK_KEY_LEN);
-    secure_buffer<unsigned char> new_salt(KEK_SALT_LEN);
-    secure_buffer<unsigned char> new_wrapped(64);
-    secure_buffer<unsigned char> old_kek_raw(KEK_KEY_LEN);
-    if (!wrapping_key || !new_kek || !new_wrapping_key || !new_salt || !new_wrapped || !old_kek_raw)
-        return false;
-
-    size_t new_wrapped_len = 0;
-    char new_expires[24];
-
     bool ok = false;
     do {
-        sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
+        if (sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr) != SQLITE_OK)
+            break;
+
         // --- load current KEK ---
         kek_row old_kek;
         if (!kek_find_by_user(db, user_id, &old_kek))
             break;
 
-        size_t old_kek_len = old_kek_raw.size();
-        if (!kek_unwrap(old_kek.wrapped_kek.data(), old_kek.wrapped_kek.size(), auth_hash,
-                        auth_hash_len, old_kek.salt.data(), old_kek.salt.size(), old_kek_raw.data(),
-                        &old_kek_len))
-            break;
-
-        // --- load all secrets ---
-        std::vector<secret_row> secrets;
-        if (!secrets_list_for_user(db, user_id, &secrets))
+        // --- archive current KEK before generating new one (crash safety) ---
+        if (!kek_archive_store(db, user_id, old_kek.kek_version,
+                               old_kek.wrapped_kek.data(), old_kek.wrapped_kek.size(),
+                               old_kek.salt.data(), old_kek.salt.size(),
+                               old_kek.expires_at.c_str()))
             break;
 
         // --- generate new KEK + salt ---
-        random_bytes(new_kek.data(), new_kek.size());
-        random_bytes(new_salt.data(), new_salt.size());
+        unsigned char new_wrapped[64];
+        size_t new_wrapped_len = sizeof(new_wrapped);
+        unsigned char new_salt[KEK_SALT_LEN];
+        size_t new_salt_len = sizeof(new_salt);
+        char new_expires[24];
 
-        if (!kek_derive_wrapping_key(auth_hash, auth_hash_len, new_salt.data(), new_salt.size(),
-                                     new_wrapping_key.data(), new_wrapping_key.size()))
+        if (!kek_generate(auth_hash, auth_hash_len, new_wrapped, &new_wrapped_len,
+                          new_salt, &new_salt_len, new_expires, sizeof(new_expires)))
             break;
 
-        if (!aes_kw_wrap(new_kek.data(), new_kek.size(), new_wrapping_key.data(),
-                         new_wrapping_key.size(), new_wrapped.data(), &new_wrapped_len))
-            break;
-
-        if (!kek_expires_at(KEK_DEFAULT_DAYS, new_expires, sizeof(new_expires)))
-            break;
-
-        // --- pre-allocate buffers (max size across all secrets) ---
-        size_t max_priv_len = 0;
-        for (auto& secret : secrets) {
-            if (secret.private_key.size() > max_priv_len)
-                max_priv_len = secret.private_key.size();
-        }
-        secure_vector<unsigned char> plain_priv(max_priv_len);
-        secure_vector<unsigned char> new_priv(max_priv_len);
-
-        const char* sql =
-            "UPDATE secrets SET private_key = ?, public_key = ?, "
-            "nonce = ?, tag = ?, "
-            "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') "
-            "WHERE id = ?";
-        sqlite3_stmt* stmt = nullptr;
-        if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK)
-            break;
-
-        // --- re-encrypt each secret ---
-        bool rotation_ok = true;
-        for (auto& secret : secrets) {
-            if (secret.private_key.size() > max_priv_len) {
-                rotation_ok = false;
-                break;
-            }
-
-            if (!aes_gcm_decrypt(secret.private_key.data(), secret.private_key.size(),
-                                 old_kek_raw.data(), old_kek_len, secret.nonce.data(),
-                                 secret.nonce.size(), nullptr, 0, secret.tag.data(),
-                                 secret.tag.size(), plain_priv.data())) {
-                rotation_ok = false;
-                break;
-            }
-
-            unsigned char new_nonce[AES_GCM_NONCE_LEN];
-            unsigned char new_priv_tag[AES_GCM_TAG_LEN];
-            random_bytes(new_nonce, sizeof(new_nonce));
-
-            if (!aes_gcm_encrypt(plain_priv.data(), secret.private_key.size(), new_kek.data(),
-                                 new_kek.size(), new_nonce, sizeof(new_nonce), nullptr, 0,
-                                 new_priv.data(), new_priv_tag, sizeof(new_priv_tag))) {
-                rotation_ok = false;
-                break;
-            }
-
-            sqlite3_reset(stmt);
-            sqlite3_bind_blob(stmt, 1, new_priv.data(),
-                              static_cast<int>(secret.private_key.size()), SQLITE_TRANSIENT);
-            if (!secret.public_key.empty())
-                sqlite3_bind_blob(stmt, 2, secret.public_key.data(),
-                                  static_cast<int>(secret.public_key.size()), SQLITE_TRANSIENT);
-            else
-                sqlite3_bind_null(stmt, 2);
-            sqlite3_bind_blob(stmt, 3, new_nonce, sizeof(new_nonce), SQLITE_TRANSIENT);
-            sqlite3_bind_blob(stmt, 4, new_priv_tag, sizeof(new_priv_tag), SQLITE_TRANSIENT);
-            sqlite3_bind_int64(stmt, 5, secret.id);
-            if (sqlite3_step(stmt) != SQLITE_DONE) {
-                rotation_ok = false;
-                break;
-            }
-        }
-
-        sqlite3_finalize(stmt);
-
-        if (!rotation_ok)
-            break;
-
-        // --- update kek_metadata (increment kek_version) ---
-        if (!kek_update(db, user_id, new_wrapped.data(), new_wrapped_len, new_salt.data(),
-                        new_salt.size(), new_expires, old_kek.kek_version))
+        // --- update kek_metadata (increment kek_version atomically) ---
+        if (!kek_update(db, user_id, new_wrapped, new_wrapped_len,
+                        new_salt, new_salt_len, new_expires, old_kek.kek_version))
             break;
 
         ok = true;
