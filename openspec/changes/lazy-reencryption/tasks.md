@@ -38,27 +38,27 @@ Chain strategy: feature-branch-chain
 
 ## Phase 2: Core Logic
 
-- [ ] 2.1 (RED) Test O(1) rotation: archive current KEK, generate new, no secrets scan
-- [ ] 2.2 (RED) Test lazy-migrate path in `ssm_secret_get`: stale kek_version → decrypt→re-encrypt→update
-- [ ] 2.3 (RED) Test safe-purge: COUNT after UPDATE, DELETE archive when zero, preserve when >0
-- [ ] 2.4 (RED) Test `ssm_kek_purge_archive` — purge only versions with zero secrets
-- [ ] 2.5 (GREEN) Rewrite `kek_rotate()` in `src/kek/kek.cc`: archive→generate→update, no secrets loop
-- [ ] 2.6 (GREEN) Add lazy-migrate block in `ssm_secret_get()` in `src/ssm.cc` — compare kek_version, lookup archive, decrypt, re-encrypt, update row
-- [ ] 2.7 (GREEN) Add safe-purge after migrate: COUNT + conditional DELETE archive in same transaction
-- [ ] 2.8 (GREEN) Add `ssm_kek_purge_archive` to `include/ssm/ssm.h` + implement in `src/ssm.cc`
+- [x] 2.1 (RED) Test O(1) rotation: archive current KEK, generate new, no secrets scan
+- [x] 2.2 (RED) Test lazy-migrate path in `ssm_secret_get`: stale kek_version → decrypt→re-encrypt→update
+- [x] 2.3 (RED) Test safe-purge: COUNT after UPDATE, DELETE archive when zero, preserve when >0
+- [x] 2.4 (RED) Test `ssm_kek_purge_archive` — purge only versions with zero secrets
+- [x] 2.5 (GREEN) Rewrite `kek_rotate()` in `src/kek/kek.cc`: archive→generate→update, no secrets loop
+- [x] 2.6 (GREEN) Add lazy-migrate block in `ssm_secret_get()` in `src/ssm.cc` — compare kek_version, lookup archive, decrypt, re-encrypt, update row
+- [x] 2.7 (GREEN) Add safe-purge after migrate: COUNT + conditional DELETE archive in same transaction
+- [x] 2.8 (GREEN) Add `ssm_kek_purge_archive` to `include/ssm/ssm.h` + implement in `src/ssm.cc`
 
 ## Phase 3: Password Change Archive Re-wrap
 
-- [ ] 3.1 (RED) Test password change with 3 archived KEKs — all re-wrapped atomically
-- [ ] 3.2 (RED) Test password change with 0 archive entries — no-op, no error
-- [ ] 3.3 (GREEN) Modify `ssm_user_change_password()` in `src/ssm.cc`: loop `kek_archive_list_for_user()`, re-wrap each, all in one transaction
+- [x] 3.1 (RED) Test password change with 3 archived KEKs — all re-wrapped atomically
+- [x] 3.2 (RED) Test password change with 0 archive entries — no-op, no error
+- [x] 3.3 (GREEN) Modify `ssm_user_change_password()` in `src/ssm.cc`: loop `kek_archive_list_for_user()`, re-wrap each, all in one transaction
 
 ## Phase 4: Integration + System Tests
 
-- [ ] 4.1 Integration: full cycle register → rotate (O(1)) → get stale secret (lazy-migrate) → purge archive
-- [ ] 4.2 Integration: password change with archived KEKs, verify all re-wrap on login
-- [ ] 4.3 Concurrency: 10 threads on stale secrets, verify atomic migration under write lock
-- [ ] 4.4 Migration test: DB at v2 → migrate to v3 → verify schema → rollback to v2
+- [x] 4.1 Integration: full cycle register → rotate (O(1)) → get stale secret (lazy-migrate) → purge archive
+- [x] 4.2 Integration: password change with archived KEKs, verify all re-wrap on login
+- [x] 4.3 Concurrency: 10 threads on stale secrets, verify atomic migration under write lock
+- [x] 4.4 Migration test: DB at v2 → migrate to v3 → verify schema → rollback to v2
 
 ## Phase 5: Cleanup
 

@@ -19,6 +19,7 @@
 #include "db/audit_log.h"
 #include "db/database.h"
 #include "db/migrations.h"
+#include "db/kek_archive.h"
 #include "db/kek_metadata.h"
 #include "db/secrets.h"
 #include "db/users.h"
@@ -415,15 +416,100 @@ ssm_status ssm_secret_get(ssm_handle* h, const char* username, const char* name,
     }
 
     secure_vector<unsigned char> plaintext(secret.private_key.size());
-    bool dec_ok =
-        aes_gcm_decrypt(secret.private_key.data(), secret.private_key.size(), kek_raw.data(),
-                        kek_len, secret.nonce.data(), secret.nonce.size(), nullptr, 0,
-                        secret.tag.data(), secret.tag.size(), plaintext.data());
 
-    if (!dec_ok) {
-        audit_write(h->db, username, user.id, "secret_get", SSM_ERR_INTEGRITY, name,
-                    "{\"error\":\"GCM integrity check failed\"}");
-        return SSM_ERR_INTEGRITY;
+    if (secret.kek_version == kek_meta.kek_version) {
+        // FAST PATH: secret is current — decrypt directly with current KEK
+        bool dec_ok =
+            aes_gcm_decrypt(secret.private_key.data(), secret.private_key.size(),
+                            kek_raw.data(), kek_len,
+                            secret.nonce.data(), secret.nonce.size(), nullptr, 0,
+                            secret.tag.data(), secret.tag.size(), plaintext.data());
+        if (!dec_ok) {
+            audit_write(h->db, username, user.id, "secret_get", SSM_ERR_INTEGRITY, name,
+                        "{\"error\":\"GCM integrity check failed\"}");
+            return SSM_ERR_INTEGRITY;
+        }
+    } else {
+        // LAZY-MIGRATE PATH: secret uses an archived KEK
+        // 1. Look up archived KEK entry for this secret's version
+        kek_archive_row archived;
+        if (!kek_archive_find_by_version(h->db, user.id, secret.kek_version, &archived)) {
+            audit_write(h->db, username, user.id, "secret_get", SSM_ERR_INTEGRITY, name,
+                        "{\"error\":\"archive entry missing for lazy-migrate\"}");
+            return SSM_ERR_INTEGRITY;
+        }
+
+        // 2. Derive old wrapping key from current password_hash + archived salt
+        secure_buffer<unsigned char> archived_wrapping_key(KEK_KEY_LEN);
+        secure_buffer<unsigned char> archived_kek(KEK_KEY_LEN);
+        if (!archived_wrapping_key || !archived_kek)
+            return SSM_ERR_INTERNAL;
+
+        if (!kek_derive_wrapping_key(user.password_hash.data(), user.password_hash.size(),
+                                     archived.salt.data(), archived.salt.size(),
+                                     archived_wrapping_key.data(),
+                                     archived_wrapping_key.size()))
+            return SSM_ERR_INTERNAL;
+
+        // 3. AES-KW unwrap the archived KEK
+        size_t archived_kek_len = archived_kek.size();
+        if (!aes_kw_unwrap(archived.wrapped_kek.data(), archived.wrapped_kek.size(),
+                           archived_wrapping_key.data(), archived_wrapping_key.size(),
+                           archived_kek.data(), &archived_kek_len))
+            return SSM_ERR_INTERNAL;
+
+        // 4. Decrypt secret using the archived KEK
+        bool dec_ok =
+            aes_gcm_decrypt(secret.private_key.data(), secret.private_key.size(),
+                            archived_kek.data(), archived_kek_len,
+                            secret.nonce.data(), secret.nonce.size(), nullptr, 0,
+                            secret.tag.data(), secret.tag.size(), plaintext.data());
+        if (!dec_ok) {
+            audit_write(h->db, username, user.id, "secret_get", SSM_ERR_INTEGRITY, name,
+                        "{\"error\":\"GCM integrity check with archived KEK failed\"}");
+            return SSM_ERR_INTEGRITY;
+        }
+
+        // 5. Re-encrypt with current KEK in a transaction
+        if (sqlite3_exec(h->db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr) != SQLITE_OK)
+            return SSM_ERR_INTERNAL;
+
+        bool migrate_ok = false;
+        do {
+            unsigned char new_nonce[AES_GCM_NONCE_LEN];
+            unsigned char new_tag[AES_GCM_TAG_LEN];
+            random_bytes(new_nonce, sizeof(new_nonce));
+
+            secure_vector<unsigned char> new_ciphertext(secret.private_key.size());
+            if (!aes_gcm_encrypt(plaintext.data(), plaintext.size(),
+                                 kek_raw.data(), kek_len,
+                                 new_nonce, sizeof(new_nonce), nullptr, 0,
+                                 new_ciphertext.data(), new_tag, sizeof(new_tag)))
+                break;
+
+            if (!secrets_update_ciphertext(h->db, secret.id, new_ciphertext.data(),
+                                           new_ciphertext.size(), new_nonce, sizeof(new_nonce),
+                                           new_tag, sizeof(new_tag), kek_meta.kek_version))
+                break;
+
+            // SAFE-PURGE: if no more secrets reference the old version, delete archive entry
+            int64_t count = 0;
+            if (secrets_count_by_kek_version(h->db, user.id, secret.kek_version, &count) &&
+                count == 0) {
+                kek_archive_delete_version(h->db, user.id, secret.kek_version);
+            }
+
+            migrate_ok = true;
+        } while (false);
+
+        if (migrate_ok) {
+            sqlite3_exec(h->db, "COMMIT", nullptr, nullptr, nullptr);
+        } else {
+            sqlite3_exec(h->db, "ROLLBACK", nullptr, nullptr, nullptr);
+            audit_write(h->db, username, user.id, "secret_get", SSM_ERR_INTERNAL, name,
+                        "{\"error\":\"lazy-migrate re-encrypt failed\"}");
+            return SSM_ERR_INTERNAL;
+        }
     }
 
     std::memcpy(private_key_out, plaintext.data(), secret.private_key.size());
@@ -668,6 +754,53 @@ ssm_status ssm_user_change_password(ssm_handle* h, const char* username, const c
         if (!kek_ok)
             break;
 
+        // Re-wrap all archive entries with the new wrapping key
+        std::vector<kek_archive_row> archive_entries;
+        if (!kek_archive_list_for_user(h->db, user.id, &archive_entries))
+            break;
+
+        bool archive_ok = true;
+        for (auto& entry : archive_entries) {
+            // Unwrap archived KEK with old wrapping key
+            size_t archive_kek_len = kek_raw.size();
+            if (!kek_unwrap(entry.wrapped_kek.data(), entry.wrapped_kek.size(),
+                            user.password_hash.data(), user.password_hash.size(),
+                            entry.salt.data(), entry.salt.size(),
+                            kek_raw.data(), &archive_kek_len)) {
+                archive_ok = false;
+                break;
+            }
+
+            // Re-wrap with new wrapping key
+            size_t rewrap_len = new_wrapped.size();
+            if (!aes_kw_wrap(kek_raw.data(), archive_kek_len,
+                             new_wrapping_key.data(), new_wrapping_key.size(),
+                             new_wrapped.data(), &rewrap_len)) {
+                archive_ok = false;
+                break;
+            }
+
+            // Update archive entry
+            const char* upd = "UPDATE kek_archive SET wrapped_kek = ? WHERE id = ?";
+            sqlite3_stmt* stmt_a = nullptr;
+            if (sqlite3_prepare_v2(h->db, upd, -1, &stmt_a, nullptr) != SQLITE_OK) {
+                archive_ok = false;
+                break;
+            }
+            sqlite3_bind_blob(stmt_a, 1, new_wrapped.data(),
+                              static_cast<int>(rewrap_len), SQLITE_TRANSIENT);
+            sqlite3_bind_int64(stmt_a, 2, entry.id);
+            if (sqlite3_step(stmt_a) != SQLITE_DONE) {
+                sqlite3_finalize(stmt_a);
+                archive_ok = false;
+                break;
+            }
+            sqlite3_finalize(stmt_a);
+        }
+
+        if (!archive_ok)
+            break;
+
         ok = true;
     } while (false);
 
@@ -707,6 +840,43 @@ ssm_status ssm_kek_rotate(ssm_handle* h, const char* username) {
 
     cache_invalidate(h, user.id);
     audit_write(h->db, username, user.id, "kek_rotate", SSM_OK, username, "{\"status\":\"ok\"}");
+    return SSM_OK;
+}
+
+ssm_status ssm_kek_purge_archive(ssm_handle* h, const char* username) {
+    if (!h || !username)
+        return SSM_ERR_INTERNAL;
+
+    std::unique_lock lock(h->mutex);
+
+    user_row user;
+    if (!users_find_by_username(h->db, username, &user)) {
+        audit_write(h->db, username, 0, "kek_purge_archive", SSM_ERR_AUTH, nullptr,
+                    "{\"error\":\"user not found\"}");
+        return SSM_ERR_AUTH;
+    }
+
+    // List all archive entries for this user
+    std::vector<kek_archive_row> entries;
+    if (!kek_archive_list_for_user(h->db, user.id, &entries)) {
+        audit_write(h->db, username, user.id, "kek_purge_archive", SSM_ERR_INTERNAL, nullptr,
+                    "{\"error\":\"failed to list archive\"}");
+        return SSM_ERR_INTERNAL;
+    }
+
+    int deleted = 0;
+    for (auto& entry : entries) {
+        int64_t count = 0;
+        if (secrets_count_by_kek_version(h->db, user.id, entry.kek_version, &count) &&
+            count == 0) {
+            if (kek_archive_delete_version(h->db, user.id, entry.kek_version))
+                ++deleted;
+        }
+    }
+
+    char det[64] = {};
+    std::snprintf(det, sizeof(det), "{\"deleted\":%d}", deleted);
+    audit_write(h->db, username, user.id, "kek_purge_archive", SSM_OK, nullptr, det);
     return SSM_OK;
 }
 
